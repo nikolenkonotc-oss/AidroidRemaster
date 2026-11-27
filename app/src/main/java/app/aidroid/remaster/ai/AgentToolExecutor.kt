@@ -128,6 +128,7 @@ class AgentToolExecutor(
             results.forEachIndexed { index, item ->
                 append(index + 1).append(". ").append(item.title).append("\n")
                 append(item.url).append("\n")
+                if (item.publishedAt.isNotBlank()) append("Дата публикации: ").append(item.publishedAt).append("\n")
                 if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\n")
                 append("\n")
             }
