@@ -1895,7 +1895,7 @@ private fun ConversationScreen(
                         colors = auroraTextFieldColors()
                     )
                     GlowSendButton(
-                        enabled = !isSending && (localText.isNotBlank() || pendingAttachments.isNotEmpty()),
+                        enabled = localText.isNotBlank() || pendingAttachments.isNotEmpty(),
                         loading = isSending
                     ) {
                         sendCurrentMessage()
