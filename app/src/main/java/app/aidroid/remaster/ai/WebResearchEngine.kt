@@ -222,8 +222,11 @@ class WebResearchEngine {
     }
 
     private fun searchGoogleNews(query: String, freshness: String): List<WebSearchHit> {
-        val language = Locale.getDefault().language.ifBlank { "en" }
-        val country = Locale.getDefault().country.ifBlank { "US" }.uppercase(Locale.ROOT)
+        val locale = Locale.getDefault()
+        val language = locale.language.ifBlank { "en" }
+        val country = locale.country.ifBlank { "US" }.uppercase(Locale.ROOT)
+        val languageTag = locale.toLanguageTag().takeIf { it.isNotBlank() && it != "und" }
+            ?: "$language-$country"
         val freshnessFilter = when (freshness) {
             "day" -> " when:1d"
             "week" -> " when:7d"
