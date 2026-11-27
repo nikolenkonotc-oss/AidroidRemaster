@@ -857,7 +857,9 @@ private fun ChatWorkspace(
     var creatingChat by remember { mutableStateOf(false) }
     var pendingCreatedChatId by remember { mutableStateOf<Long?>(null) }
     var creationError by remember { mutableStateOf<String?>(null) }
-    var visibleChatId by remember { mutableStateOf<Long?>(null) }
+    // Preserve the currently selected chat when ChatWorkspace is recreated after switching sections.
+    // This prevents a second entrance animation for a chat that was already open.
+    var visibleChatId by remember { mutableStateOf(selectedChatId) }
 
     LaunchedEffect(selectedChatId, allChats) {
         if (selectedChatId == null) {
@@ -1462,7 +1464,8 @@ private fun ConversationScreen(
     var selectedMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var textSelectionMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
-    var isSending by remember { mutableStateOf(false) }
+    var pendingSends by remember { mutableStateOf(0) }
+    val isSending = pendingSends > 0
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1589,21 +1592,25 @@ private fun ConversationScreen(
 
     fun sendCurrentMessage() {
         val text = localText.trim()
-        if (isSending || (text.isEmpty() && pendingAttachments.isEmpty())) return
+        if (text.isEmpty() && pendingAttachments.isEmpty()) return
         val attachments = pendingAttachments.toList()
-        isSending = true
+
+        // Detach this submission from the composer immediately. The next message can
+        // be entered and sent while this one is still being persisted/synced.
+        localText = ""
+        pendingAttachments.clear()
+        attachmentError = null
+        pendingSends += 1
+
         scope.launch {
             try {
                 onSend(text, attachments)
-                localText = ""
-                pendingAttachments.clear()
-                attachmentError = null
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 attachmentError = "Не удалось сохранить сообщение: ${error.message ?: "попробуй ещё раз"}"
             } finally {
-                isSending = false
+                pendingSends = (pendingSends - 1).coerceAtLeast(0)
             }
         }
     }
