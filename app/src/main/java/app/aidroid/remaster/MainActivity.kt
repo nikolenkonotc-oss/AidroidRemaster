@@ -190,7 +190,7 @@ private fun AidroidApp(repository: ChatRepository) {
         lightColorScheme(
             primary = Color(0xFF6040B8),
             onPrimary = Color.White,
-            secondary = Color(0xFF216F7D),
+            secondary = Color(0xFF8060C8),
             background = Color(0xFFF1F0F7),
             surface = Color(0xFFFCFBFF),
             surfaceVariant = Color(0xFFE9E7F0),
@@ -279,7 +279,7 @@ private fun AuroraBackdrop(dark: Boolean) {
     )
     val base = if (dark) Color(0xFF090914) else Color(0xFFF4F2FB)
     val violet = if (dark) Color(0xFF7351C7) else Color(0xFFB7A0F0)
-    val aqua = if (dark) Color(0xFF176B79) else Color(0xFF9CDCE0)
+    val aqua = if (dark) Color(0xFF176B79) else Color(0xFFC9B9F4)
     val rose = if (dark) Color(0xFF633E7B) else Color(0xFFE3C9EF)
 
     Canvas(Modifier.fillMaxSize().background(base)) {
@@ -288,7 +288,7 @@ private fun AuroraBackdrop(dark: Boolean) {
         drawRect(
             brush = Brush.linearGradient(
                 colors = if (dark) listOf(Color(0xFF111023), Color(0xFF0A1420), Color(0xFF100D1C))
-                else listOf(Color(0xFFF8F5FF), Color(0xFFEAF6F7), Color(0xFFF6F0FC)),
+                else listOf(Color(0xFFF8F5FF), Color(0xFFF0ECFA), Color(0xFFF6F0FC)),
                 start = Offset.Zero,
                 end = Offset(w, h)
             )
@@ -340,7 +340,7 @@ private fun GlassPanel(
         listOf(
             if (highlighted) Color(0xFFF4F0FF) else Color(0xFFFCFBFF),
             Color(0xFFF3F1F8),
-            Color(0xFFEEF2F5)
+            Color(0xFFF0ECF8)
         )
     }
     val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFD7D2E2)
@@ -399,7 +399,7 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
                 Box(
                     Modifier.size(43.dp).shadow(10.dp, RoundedCornerShape(15.dp), clip = false)
                         .clip(RoundedCornerShape(15.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFFC2A6FF), Violet, Color(0xFF3D9EAC))))
+                        .background(Brush.linearGradient(listOf(Color(0xFFD8C7FF), Violet, Color(0xFF7654C8))))
                         .border(1.dp, Color.White.copy(alpha = 0.52f), RoundedCornerShape(15.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -456,7 +456,7 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
         item {
             val heroText = if (dark) Color(0xFFF9F6FF) else Color(0xFF241A38)
             val heroMuted = if (dark) Color(0xFFD8D0E8) else Color(0xFF625873)
-            val heroAccent = if (dark) Color(0xFF91E5E8) else Color(0xFF287B86)
+            val heroAccent = if (dark) Color(0xFF91E5E8) else Color(0xFF7652C7)
             GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 31, highlighted = true) {
                 Box(Modifier.fillMaxWidth()) {
                     Box(
@@ -511,9 +511,9 @@ private fun GlowButton(text: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(19.dp)
     val dark = MaterialTheme.colorScheme.background.red < 0.2f
     val buttonBrush = if (dark) {
-        Brush.linearGradient(listOf(Color(0xFFC2A7FF), Violet, Color(0xFF4A78B9)))
+        Brush.linearGradient(listOf(Color(0xFFD1BBFF).copy(alpha = 0.94f), Violet.copy(alpha = 0.90f), Color(0xFF6650B8).copy(alpha = 0.92f)))
     } else {
-        Brush.linearGradient(listOf(Color(0xFF557E8C), Color(0xFF3D6776), Color(0xFF477E8D)))
+        Brush.linearGradient(listOf(Color(0xFFBFA8F4).copy(alpha = 0.88f), Color(0xFF9679DF).copy(alpha = 0.84f), Color(0xFF7656C6).copy(alpha = 0.90f)))
     }
     Box(
         Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
@@ -747,7 +747,7 @@ private fun ChatListScreen(
                     .clip(addShape)
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFFB99AFF), Color(0xFF8061E8), Color(0xFF4E9ED0))
+                            listOf(Color(0xFFD0BCFF), Color(0xFF9272E6), Color(0xFF7251C5))
                         )
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
@@ -1147,6 +1147,7 @@ private fun ConversationScreen(
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
     var knownMessageIds by remember(chat.id) { mutableStateOf<Set<Long>?>(null) }
+    var enteringMessageIds by remember(chat.id) { mutableStateOf<Set<Long>>(emptySet()) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
 
@@ -1159,7 +1160,20 @@ private fun ConversationScreen(
     }
 
     LaunchedEffect(messages) {
-        messages?.let { current -> knownMessageIds = current.map { it.id }.toSet() }
+        val current = messages ?: return@LaunchedEffect
+        val currentIds = current.mapTo(mutableSetOf()) { it.id }
+        val previousIds = knownMessageIds
+        if (previousIds == null) {
+            knownMessageIds = currentIds
+        } else {
+            val entering = currentIds - previousIds
+            knownMessageIds = currentIds
+            if (entering.isNotEmpty()) {
+                enteringMessageIds = enteringMessageIds + entering
+                delay(560)
+                enteringMessageIds = enteringMessageIds - entering
+            }
+        }
     }
 
     val pendingAttachments = remember(chat.id) { mutableStateListOf<StoredAttachment>() }
@@ -1351,7 +1365,7 @@ private fun ConversationScreen(
                                     }
                                 }
                             }
-                            val isNewMessage = knownMessageIds?.contains(message.id) == false
+                            val isNewMessage = enteringMessageIds.contains(message.id)
                             val messageInteraction = remember(message.id) { MutableInteractionSource() }
                             val messagePressed by messageInteraction.collectIsPressedAsState()
                             val messagePressScale by animateFloatAsState(
@@ -1364,12 +1378,12 @@ private fun ConversationScreen(
                             )
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = !isNewMessage,
-                                enter = fadeIn(tween(190)) +
-                                    slideInVertically(tween(270, easing = FastOutSlowInEasing)) { it / 3 } +
+                                enter = fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(tween(340, easing = FastOutSlowInEasing)) { it / 2 } +
                                     scaleIn(
-                                        initialScale = 0.94f,
+                                        initialScale = 0.88f,
                                         animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            dampingRatio = 0.72f,
                                             stiffness = Spring.StiffnessMediumLow
                                         )
                                     ),
@@ -2023,17 +2037,31 @@ private fun GlowSendButton(enabled: Boolean, loading: Boolean = false, onClick: 
             .shadow(elevation, CircleShape, clip = false)
             .clip(CircleShape)
             .background(
-                if (enabled) Brush.linearGradient(listOf(Color(0xFFC4A8FF), Violet, Color(0xFF3E94A2)))
-                else Brush.linearGradient(listOf(Color(0xFF807A90), Color(0xFF5C5969)))
+                if (enabled) Brush.linearGradient(
+                    listOf(
+                        Color(0xFFDCCBFF).copy(alpha = 0.96f),
+                        Violet.copy(alpha = 0.94f),
+                        Color(0xFF7654C8).copy(alpha = 0.96f)
+                    )
+                ) else Brush.linearGradient(listOf(Color(0xFFAAA3B8), Color(0xFF827B91)))
             )
-            .border(1.dp, Color.White.copy(alpha = if (enabled) 0.62f else 0.20f), CircleShape)
+            .border(1.dp, Color.White.copy(alpha = if (enabled) 0.78f else 0.30f), CircleShape)
             .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(19.dp), color = Color.White, strokeWidth = 2.dp)
-        } else {
-            Icon(Icons.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        AnimatedContent(
+            targetState = loading,
+            transitionSpec = {
+                (fadeIn(tween(150)) + scaleIn(initialScale = 0.72f, animationSpec = tween(180)))
+                    .togetherWith(fadeOut(tween(110)) + scaleOut(targetScale = 0.72f, animationSpec = tween(150)))
+            },
+            label = "send-button-content"
+        ) { sending ->
+            if (sending) {
+                CircularProgressIndicator(modifier = Modifier.size(19.dp), color = Color.White, strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
