@@ -1199,78 +1199,111 @@ private fun ConversationScreen(
                     )
                 }
             }
-            loadedMessagesState.isEmpty() -> {
-                AnimatedVisibility(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    visible = true,
-                    enter = fadeIn(tween(360)) +
-                        scaleIn(initialScale = 0.94f, animationSpec = tween(420, easing = FastOutSlowInEasing)) +
-                        slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(360)),
-                    label = "new-chat-welcome"
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(9.dp)
+            else -> {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    LazyColumn(
+                        state = messageListState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        items(
+                            items = loadedMessagesState,
+                            key = { it.id }
+                        ) { message ->
+                            val isUser = message.role == "user"
+                            val attachments = AttachmentJson.decode(message.attachmentsJson)
+                            val messageContent: @Composable ColumnScope.() -> Unit = {
+                                if (message.content.isNotBlank()) {
+                                    MessageBodyText(message.id, message.content) { url ->
+                                        runCatching { uriHandler.openUri(url) }
+                                            .onFailure { showNotice("Не удалось открыть ссылку") }
+                                    }
+                                }
+                                attachments.forEach { attachment ->
+                                    StoredAttachmentCard(attachment) {
+                                        openStoredAttachment(context, attachment)?.let { attachmentError = it }
+                                    }
+                                }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().animateItem(),
+                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                             ) {
-                                Box(
-                                    Modifier.size(54.dp).clip(CircleShape)
-                                        .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.24f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)))),
-                                    contentAlignment = Alignment.Center
-                                ) { Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp)) }
-                                Text("С чего начнём?", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                                Text("Можно написать сообщение, добавить файлы или сделать фото камерой.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                GlassPanel(
+                                    modifier = Modifier.widthIn(max = 320.dp).combinedClickable(
+                                        onClick = {},
+                                        onLongClickLabel = "Действия с сообщением",
+                                        onLongClick = { selectedMessage = message }
+                                    ),
+                                    cornerRadius = 21,
+                                    highlighted = isUser
+                                ) {
+                                    Column(
+                                        Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                                        content = messageContent
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (loadedMessagesState.isEmpty()) {
+                        AnimatedVisibility(
+                            modifier = Modifier.fillMaxSize(),
+                            visible = true,
+                            enter = fadeIn(tween(300)) +
+                                scaleIn(initialScale = 0.97f, animationSpec = tween(320, easing = FastOutSlowInEasing)),
+                            label = "new-chat-welcome"
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27) {
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                                    ) {
+                                        Box(
+                                            Modifier.size(54.dp).clip(CircleShape)
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        listOf(
+                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)
+                                                        )
+                                                    )
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.AutoAwesome,
+                                                null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(27.dp)
+                                            )
+                                        }
+                                        Text(
+                                            "С чего начнём?",
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            "Можно написать сообщение, добавить файлы или сделать фото камерой.",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            else -> {
-                LazyColumn(
-                    state = messageListState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(loadedMessagesState, key = { it.id }) { message ->
-                        val isUser = message.role == "user"
-                        val attachments = AttachmentJson.decode(message.attachmentsJson)
-                        val messageContent: @Composable ColumnScope.() -> Unit = {
-                            if (message.content.isNotBlank()) {
-                                MessageBodyText(message.id, message.content) { url ->
-                                    runCatching { uriHandler.openUri(url) }
-                                        .onFailure { showNotice("Не удалось открыть ссылку") }
-                                }
-                            }
-                            attachments.forEach { attachment ->
-                                StoredAttachmentCard(attachment) {
-                                    openStoredAttachment(context, attachment)?.let { attachmentError = it }
-                                }
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().animateItem(),
-                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                        ) {
-                            GlassPanel(
-                                modifier = Modifier.widthIn(max = 320.dp).combinedClickable(
-                                    onClick = {},
-                                    onLongClickLabel = "Действия с сообщением",
-                                    onLongClick = { selectedMessage = message }
-                                ),
-                                cornerRadius = 21,
-                                highlighted = isUser
-                            ) {
-                                Column(
-                                    Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                                    content = messageContent
-                                )
-                            }
-                        }
-                    }
+        }
+
+
                 }
             }
         }
