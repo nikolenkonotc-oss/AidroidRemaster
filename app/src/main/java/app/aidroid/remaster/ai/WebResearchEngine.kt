@@ -259,11 +259,14 @@ class WebResearchEngine {
 
 private object PublicOnlyDns : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
-        val addresses = Dns.SYSTEM.lookup(hostname)
-        if (addresses.isEmpty() || addresses.any { !isPublicAddress(it) }) {
-            throw UnknownHostException("Домен указывает на локальный или непубличный IP-адрес.")
+        // Some dual-stack/CDN hosts return both public and non-public answers.
+        // Keep only routable public addresses instead of rejecting the whole host.
+        // The socket can only connect to this filtered list, so private targets remain blocked.
+        val publicAddresses = Dns.SYSTEM.lookup(hostname).filter(::isPublicAddress)
+        if (publicAddresses.isEmpty()) {
+            throw UnknownHostException("Для домена не найден публичный IP-адрес. Проверь DNS и адрес ссылки.")
         }
-        return addresses
+        return publicAddresses
     }
 }
 
