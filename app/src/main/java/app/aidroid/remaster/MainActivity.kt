@@ -185,6 +185,7 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
     val coroutineScope = rememberCoroutineScope()
     var accountProfile by remember { mutableStateOf(accountStore.load()) }
     var cloudProfileReady by remember { mutableStateOf(false) }
+    var cloudProfileWritesEnabled by remember { mutableStateOf(false) }
     var syncLoading by rememberSaveable { mutableStateOf(false) }
     var syncStatus by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
@@ -197,15 +198,19 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
                     )
                 }
                 repository.syncNow()
+                cloudProfileWritesEnabled = true
             } catch (error: Exception) {
-                syncStatus = "Не удалось получить облачные данные: ${error.message ?: "ошибка"}"
+                // Do not overwrite cloud data with a stale local snapshot while offline.
+                syncStatus = "Не удалось получить облачные данные: ${error.message ?: "ошибка"}. Автосохранение в облако приостановлено."
             }
+        } else {
+            cloudProfileWritesEnabled = true
         }
         cloudProfileReady = true
     }
-    LaunchedEffect(accountProfile, cloudProfileReady) {
+    LaunchedEffect(accountProfile, cloudProfileReady, cloudProfileWritesEnabled) {
         accountStore.save(accountProfile)
-        if (cloudProfileReady && accountProfile.accountType == "google" && cloudSync.isSignedIn) {
+        if (cloudProfileReady && cloudProfileWritesEnabled && accountProfile.accountType == "google" && cloudSync.isSignedIn) {
             delay(700)
             try {
                 val synced = cloudSync.syncProfile(accountProfile)
@@ -386,6 +391,7 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
                                                             email = cloudAccount.email.ifBlank { google.email },
                                                             googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
                                                         )
+                                                        cloudProfileWritesEnabled = true
                                                         accountProfile = cloudSync.syncProfile(signedInProfile)
                                                         repository.syncNow()
                                                         syncStatus = "Google подключён · синхронизация завершена"
