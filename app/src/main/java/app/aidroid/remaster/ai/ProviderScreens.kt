@@ -173,6 +173,7 @@ private fun ProviderEditorDialog(
     var model by remember(initial?.id) { mutableStateOf(initial?.model.orEmpty()) }
     var apiKey by remember(initial?.id) { mutableStateOf("") }
     var supportsReasoning by remember(initial?.id) { mutableStateOf(initial?.supportsReasoning ?: false) }
+    var supportsImageApi by remember(initial?.id) { mutableStateOf(initial?.supportsImageApi ?: false) }
     var typeMenu by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -199,6 +200,7 @@ private fun ProviderEditorDialog(
                                     type = option
                                     baseUrl = defaultBaseUrl(option)
                                     supportsReasoning = false
+                                    supportsImageApi = false
                                     if (name.isBlank()) name = option.displayName()
                                     typeMenu = false
                                 }
@@ -228,6 +230,19 @@ private fun ProviderEditorDialog(
                     }
                     Switch(checked = supportsReasoning, onCheckedChange = { supportsReasoning = it })
                 }
+                if (type == ProviderType.OPENAI_COMPATIBLE) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Поддерживает OpenAI Images API", fontWeight = FontWeight.Medium)
+                            Text("Включай, только если шлюз поддерживает /v1/images/generations и /v1/images/edits. Совместимость чата этого не гарантирует.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Switch(checked = supportsImageApi, onCheckedChange = { supportsImageApi = it })
+                    }
+                } else if (type == ProviderType.OPENAI) {
+                    Text("OpenAI напрямую: Images API доступен при наличии прав и активного тарифа.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                }
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -240,7 +255,8 @@ private fun ProviderEditorDialog(
                                     type = type,
                                     baseUrl = baseUrl,
                                     model = model.ifBlank { "model-id" },
-                                    supportsReasoning = supportsReasoning
+                                    supportsReasoning = supportsReasoning,
+                                    supportsImageApi = type == ProviderType.OPENAI || supportsImageApi
                                 )
                                 val key = apiKey.ifBlank { initial?.let { manager.apiKey(it.id).orEmpty() }.orEmpty() }
                                 models = client.listModels(candidate, key)
@@ -294,7 +310,8 @@ private fun ProviderEditorDialog(
                                 type = type,
                                 baseUrl = baseUrl,
                                 model = model,
-                                supportsReasoning = supportsReasoning
+                                supportsReasoning = supportsReasoning,
+                                supportsImageApi = type == ProviderType.OPENAI || supportsImageApi
                             ),
                             apiKey
                         )
@@ -313,6 +330,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var providers by remember { mutableStateOf(manager.providers()) }
     var preferences by remember { mutableStateOf(manager.agentPreferences()) }
     var providerMenu by remember { mutableStateOf(false) }
+    var imageProviderMenu by remember { mutableStateOf(false) }
     var savedNotice by remember { mutableStateOf<String?>(null) }
     var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
     var braveKeyVisible by remember { mutableStateOf(false) }
@@ -333,8 +351,18 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     }
 
     val active = providers.firstOrNull { it.id == preferences.activeProviderId && it.enabled }
-    val hasOpenAiKey = providers.any {
-        it.type == ProviderType.OPENAI && !manager.apiKey(it.id).isNullOrBlank()
+    val imageProviders = providers.filter { provider ->
+        provider.enabled &&
+            provider.type in setOf(ProviderType.OPENAI, ProviderType.OPENAI_COMPATIBLE) &&
+            (provider.type == ProviderType.OPENAI || provider.supportsImageApi) &&
+            !manager.apiKey(provider.id).isNullOrBlank()
+    }
+    val automaticImageProvider = imageProviders.firstOrNull { it.id == active?.id }
+        ?: imageProviders.firstOrNull { it.type == ProviderType.OPENAI }
+    val selectedImageProvider = if (preferences.imageProviderId == null) {
+        automaticImageProvider
+    } else {
+        imageProviders.firstOrNull { it.id == preferences.imageProviderId }
     }
 
     Column(
@@ -475,10 +503,56 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     checked = "image_generation" in preferences.enabledTools,
                     onChecked = { toggleTool("image_generation", it) }
                 )
-                if (!hasOpenAiKey) {
+                if (imageProviders.isNotEmpty()) {
+                    Box {
+                        OutlinedButton(onClick = { imageProviderMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                selectedImageProvider?.let { "Изображения: ${it.name}" } ?: "Выбрать провайдера изображений",
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        DropdownMenu(expanded = imageProviderMenu, onDismissRequest = { imageProviderMenu = false }) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        automaticImageProvider?.let { "Автоматически · ${it.name}" }
+                                            ?: "Автоматически · не настроено"
+                                    )
+                                },
+                                onClick = {
+                                    update(preferences.copy(imageProviderId = null))
+                                    imageProviderMenu = false
+                                }
+                            )
+                            imageProviders.forEach { provider ->
+                                DropdownMenuItem(
+                                    text = { Text("${provider.name} · ${provider.model}") },
+                                    onClick = {
+                                        update(preferences.copy(imageProviderId = provider.id))
+                                        imageProviderMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        "Для генерации и редактирования нужен хотя бы один OpenAI-провайдер с сохранённым API-ключом. Модель чата при этом может быть другой.",
+                        "Для изображений используется выбранный здесь провайдер, независимо от модели чата. У OpenAI-compatible подключений включи поддержку Images API в настройках самого провайдера.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Text(
+                        "Пока нет доступного провайдера изображений. Добавь OpenAI или включи поддержку OpenAI Images API для совместимого шлюза и сохрани API-ключ.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (preferences.imageProviderId != null && selectedImageProvider == null) {
+                    Text(
+                        "Выбранный провайдер изображений отключён, удалён или потерял API-ключ. Выбери другой.",
+                        color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
