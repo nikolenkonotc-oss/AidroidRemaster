@@ -334,6 +334,8 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var savedNotice by remember { mutableStateOf<String?>(null) }
     var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
     var braveKeyVisible by remember { mutableStateOf(false) }
+    var imageGenerationModel by remember { mutableStateOf(preferences.imageGenerationModel) }
+    var imageEditModel by remember { mutableStateOf(preferences.imageEditModel) }
     var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
     var endpointError by remember { mutableStateOf<String?>(null) }
 
@@ -541,6 +543,40 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                         "Для изображений используется выбранный здесь провайдер, независимо от модели чата. У OpenAI-compatible подключений включи поддержку Images API в настройках самого провайдера.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = imageGenerationModel,
+                        onValueChange = { imageGenerationModel = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("ID модели генерации") },
+                        supportingText = { Text("По умолчанию: gpt-image-2.6-flare") }
+                    )
+                    OutlinedTextField(
+                        value = imageEditModel,
+                        onValueChange = { imageEditModel = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("ID модели редактирования") },
+                        supportingText = { Text("По умолчанию: gpt-image-2.6-sunburst") }
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            update(
+                                preferences.copy(
+                                    imageGenerationModel = imageGenerationModel.trim().ifBlank { "gpt-image-2.6-flare" },
+                                    imageEditModel = imageEditModel.trim().ifBlank { "gpt-image-2.6-sunburst" }
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Сохранить параметры изображений")
+                    }
+                    Text(
+                        "Если шлюз не знает эти ID, укажи точные названия моделей, которые поддерживает его Image API. Список моделей чата не подтверждает наличие Image API.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall
                     )
                 } else {
                     Text(
