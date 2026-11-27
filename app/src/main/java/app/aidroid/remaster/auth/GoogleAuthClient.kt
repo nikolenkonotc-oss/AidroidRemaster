@@ -6,7 +6,9 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import app.aidroid.remaster.R
 
@@ -31,20 +33,44 @@ class GoogleAuthClient(context: Context) {
             "Google-вход не настроен. Добавь Web Client ID в strings.xml по инструкции docs/GOOGLE_AUTH_SETUP.md."
         }
 
-        // Show all Google accounts on the device and require an explicit account choice.
-        val option = GetGoogleIdOption.Builder()
+        // First try Credential Manager's account bottom sheet, including accounts
+        // that have not previously authorized this app.
+        val accountOption = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId)
             .setFilterByAuthorizedAccounts(false)
             .setAutoSelectEnabled(false)
             .build()
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(option)
+        val accountRequest = GetCredentialRequest.Builder()
+            .addCredentialOption(accountOption)
             .build()
 
-        val response = credentialManager.getCredential(
-            context = activity,
-            request = request
-        )
+        // Some devices do not expose the bottom sheet (for example, when Google
+        // sign-in prompts are disabled). The explicit Sign in with Google flow is
+        // the supported fallback for that situation.
+        val response = try {
+            credentialManager.getCredential(
+                context = activity,
+                request = accountRequest
+            )
+        } catch (noAccount: NoCredentialException) {
+            val buttonOption = GetSignInWithGoogleOption.Builder(webClientId).build()
+            val buttonRequest = GetCredentialRequest.Builder()
+                .addCredentialOption(buttonOption)
+                .build()
+
+            try {
+                credentialManager.getCredential(
+                    context = activity,
+                    request = buttonRequest
+                )
+            } catch (fallbackError: NoCredentialException) {
+                throw IllegalStateException(
+                    "Google не предоставил доступный аккаунт. Проверь, что на телефоне добавлен и активен Google-аккаунт, а Google Play services обновлены. Затем повтори вход.",
+                    fallbackError
+                )
+            }
+        }
+
         val credential = response.credential
         require(
             credential is CustomCredential &&
