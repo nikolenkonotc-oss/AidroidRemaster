@@ -48,7 +48,8 @@ jobs:
             chmod 600 "$HOME/.android/debug.keystore"
             echo "Using Firebase-registered debug signing key."
           else
-            echo "::warning::AIDROID_DEBUG_KEYSTORE_BASE64 is missing. Google Sign-In may fail because this runner will generate a different debug key."
+            echo "::error::AIDROID_DEBUG_KEYSTORE_BASE64 is missing. Add the Firebase-registered debug keystore as a repository Actions secret before building an installable Google-sign-in APK."
+            exit 1
           fi
 
       - name: Install Android platform
