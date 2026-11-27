@@ -2540,9 +2540,9 @@ private fun ProfileEditor(
                         Modifier.size(30.dp).clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary)
                             .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                            .pressScaleClickable {
+                            .pressScaleClickable(onClick = {
                                 photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            },
+                            }),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Filled.Edit, contentDescription = "Изменить аватар", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(15.dp))
@@ -2620,7 +2620,7 @@ private fun ProfileEditor(
                         Text("Google-аккаунт", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                         Text(profile.email, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
-                    Icon(Icons.Filled.Verified, contentDescription = "Google", tint = MaterialTheme.colorScheme.secondary)
+                    Icon(Icons.Filled.AccountCircle, contentDescription = "Google account", tint = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
