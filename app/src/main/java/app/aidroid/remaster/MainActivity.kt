@@ -1023,18 +1023,37 @@ private fun ChatListScreen(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    if (archived) "Архив" else "Мои чаты",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    if (archived) "${filtered.size} сохранённых диалогов" else "${filtered.size} диалогов",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
+            AnimatedContent(
+                targetState = archived,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    (fadeIn(tween(230, easing = FastOutSlowInEasing)) +
+                        slideInVertically(
+                            initialOffsetY = { height -> height / 5 },
+                            animationSpec = tween(230, easing = FastOutSlowInEasing)
+                        )).togetherWith(
+                        fadeOut(tween(130, easing = FastOutSlowInEasing)) +
+                            slideOutVertically(
+                                targetOffsetY = { height -> -height / 10 },
+                                animationSpec = tween(130, easing = FastOutSlowInEasing)
+                            )
+                    )
+                },
+                label = "chat-list-header-transition"
+            ) { showArchive ->
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        if (showArchive) "Архив" else "Мои чаты",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (showArchive) "${filtered.size} сохранённых диалогов" else "${filtered.size} диалогов",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             val addShape = CircleShape
