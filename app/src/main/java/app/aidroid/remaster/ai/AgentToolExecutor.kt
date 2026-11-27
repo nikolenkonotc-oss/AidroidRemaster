@@ -223,8 +223,8 @@ class AgentToolExecutor(
 
         val apiRoot = if (base.endsWith("/api/v2")) base else "$base/api/v2"
         val runtimesRequest = Request.Builder().url("$apiRoot/runtimes").get().build()
-        val runtimes = executeJson(runtimesRequest)
-        val runtime = runtimes.jsonArray.firstOrNull { row ->
+        val runtimes = executeJsonElement(runtimesRequest).jsonArray
+        val runtime = runtimes.firstOrNull { row ->
             val item = row.jsonObject
             item["language"]?.jsonPrimitive?.contentOrNull == language ||
                 item["aliases"]?.jsonArray?.any { it.jsonPrimitive.contentOrNull == language } == true
@@ -450,18 +450,20 @@ class AgentToolExecutor(
         return executeJson(request)
     }
 
-    private fun executeJson(request: Request): JsonObject {
+    private fun executeJson(request: Request): JsonObject = executeJsonElement(request).jsonObject
+
+    private fun executeJsonElement(request: Request): JsonElement {
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val detail = runCatching {
-                    json.parseToJsonElement(body).jsonObject["message"]?.jsonPrimitive?.contentOrNull
-                        ?: json.parseToJsonElement(body).jsonObject["error"]?.jsonObject
-                            ?.get("message")?.jsonPrimitive?.contentOrNull
+                    val root = json.parseToJsonElement(body)
+                    root.jsonObject["message"]?.jsonPrimitive?.contentOrNull
+                        ?: root.jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
                 }.getOrNull()
                 throw IllegalStateException(detail ?: "Сервис инструмента вернул HTTP ${response.code}.")
             }
-            return json.parseToJsonElement(body).jsonObject
+            return json.parseToJsonElement(body)
         }
     }
 
