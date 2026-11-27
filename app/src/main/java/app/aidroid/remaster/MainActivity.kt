@@ -1,6 +1,13 @@
 package app.aidroid.remaster
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.app.Activity
 import android.content.ContextWrapper
 import android.content.ActivityNotFoundException
@@ -15,6 +22,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
@@ -105,6 +113,8 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.aidroid.remaster.ai.AgentRunner
+import app.aidroid.remaster.ai.AgentActionType
+import app.aidroid.remaster.ai.AgentExternalAction
 import app.aidroid.remaster.ai.AgentWorkspaceScreen
 import app.aidroid.remaster.ai.ProviderManager
 import app.aidroid.remaster.ai.ProviderModelsScreen
@@ -126,6 +136,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.launch
@@ -291,6 +302,7 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync,
     MaterialTheme(colorScheme = scheme) {
         Box(Modifier.fillMaxSize().background(scheme.background)) {
             AuroraBackdrop(darkTheme)
+            val pendingAction by agentRunner.pendingAction.collectAsState()
             Scaffold(
                 containerColor = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.onBackground,
@@ -481,8 +493,94 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync,
                     }
                 }
             }
+            pendingAction?.let { action ->
+                AgentActionApprovalDialog(
+                    action = action,
+                    onDismiss = { agentRunner.resolveAction(action.id, approved = false) },
+                    onConfirm = { agentRunner.resolveAction(action.id, approved = true) }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun AgentActionApprovalDialog(
+    action: AgentExternalAction,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val confirmLabel = when (action.type) {
+        AgentActionType.CODE_EXECUTION -> "Запустить код"
+        AgentActionType.EMAIL_DRAFT -> "Открыть почту"
+        AgentActionType.CALENDAR_EVENT -> "Открыть календарь"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(action.title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                when (action.type) {
+                    AgentActionType.CODE_EXECUTION -> {
+                        Text("Язык: ${action.subject.uppercase(Locale.getDefault())}")
+                        Text("Код будет отправлен только на настроенный сервер Piston после твоего подтверждения.")
+                        SelectionContainer {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    action.body,
+                                    modifier = Modifier.padding(12.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                    AgentActionType.EMAIL_DRAFT -> {
+                        if (action.recipient.isNotBlank()) Text("Кому: ${action.recipient}")
+                        Text("Тема: ${action.subject}", fontWeight = FontWeight.SemiBold)
+                        Text(action.body)
+                        Text(
+                            "Aidroid откроет почтовое приложение с черновиком. Письмо не отправляется автоматически.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    AgentActionType.CALENDAR_EVENT -> {
+                        Text(action.subject, fontWeight = FontWeight.SemiBold)
+                        Text("Начало: ${action.startIso}")
+                        Text("Окончание: ${action.endIso}")
+                        if (action.location.isNotBlank()) Text("Место: ${action.location}")
+                        if (action.body.isNotBlank()) Text(action.body)
+                        Text(
+                            "Aidroid откроет системную форму события. Запись в календарь произойдёт только после отдельного сохранения в нём.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Text(
+                    "Это действие будет выполнено только после подтверждения. Отмена или закрытие окна отклоняет его.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+        shape = RoundedCornerShape(26.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    )
 }
 
 @Composable
@@ -1507,6 +1605,14 @@ private fun ConversationScreen(
     var selectedMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var textSelectionMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
+    var isListening by remember(chat.id) { mutableStateOf(false) }
+    var speechRecognizer by remember(chat.id) { mutableStateOf<SpeechRecognizer?>(null) }
+    var ttsReady by remember { mutableStateOf(false) }
+    val textToSpeech = remember(context) {
+        TextToSpeech(context) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+        }
+    }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
     var pendingAgentRequests by remember(chat.id) { mutableIntStateOf(0) }
@@ -1518,6 +1624,92 @@ private fun ConversationScreen(
             uiNotice = message
             delay(2200)
             if (uiNotice == message) uiNotice = null
+        }
+    }
+
+    fun startVoiceInput() {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            showNotice("На устройстве нет доступной службы распознавания речи.")
+            return
+        }
+        runCatching {
+            speechRecognizer?.destroy()
+            val recognizer = if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            ) {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            } else {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            }
+            speechRecognizer = recognizer
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    isListening = true
+                }
+                override fun onBeginningOfSpeech() = Unit
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() {
+                    isListening = false
+                }
+                override fun onError(error: Int) {
+                    isListening = false
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
+                    showNotice(
+                        if (error == SpeechRecognizer.ERROR_NO_MATCH) "Не удалось распознать речь. Попробуй ещё раз."
+                        else "Распознавание речи завершилось с ошибкой."
+                    )
+                }
+                override fun onResults(results: Bundle?) {
+                    isListening = false
+                    val recognized = results
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        .orEmpty()
+                        .trim()
+                    if (recognized.isNotBlank()) {
+                        localText = listOf(localText.trim(), recognized)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" ")
+                        showNotice("Речь добавлена в поле сообщения")
+                    } else {
+                        showNotice("Речь не распознана. Попробуй ещё раз.")
+                    }
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
+                }
+                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            recognizer.startListening(intent)
+            isListening = true
+        }.onFailure { error ->
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+            isListening = false
+            showNotice(error.message ?: "Не удалось запустить распознавание речи.")
+        }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startVoiceInput()
+        else showNotice("Разрешение на микрофон не выдано.")
+    }
+
+    DisposableEffect(textToSpeech) {
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
         }
     }
 
@@ -1629,6 +1821,9 @@ private fun ConversationScreen(
         onDispose {
             pendingAttachments.forEach(attachmentStorage::delete)
             pendingCameraFile?.delete()
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+            isListening = false
         }
     }
 
@@ -1941,6 +2136,28 @@ private fun ConversationScreen(
                         modifier = Modifier.size(48.dp),
                         iconModifier = Modifier.size(27.dp)
                     )
+                    if (agentRunner.isToolEnabled("voice_input")) {
+                        PressAnimatedIconButton(
+                            onClick = {
+                                if (isListening) {
+                                    speechRecognizer?.stopListening()
+                                } else if (ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    startVoiceInput()
+                                } else {
+                                    microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                            icon = if (isListening) Icons.Filled.Stop else Icons.Filled.Mic,
+                            contentDescription = if (isListening) "Остановить запись" else "Голосовой ввод",
+                            tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp),
+                            iconModifier = Modifier.size(23.dp)
+                        )
+                    }
                     OutlinedTextField(
                         value = localText,
                         onValueChange = { localText = it },
@@ -2030,6 +2247,32 @@ private fun ConversationScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (messageForActions.content.isNotBlank()) {
+                    if (agentRunner.isToolEnabled("voice_output")) {
+                        MessageActionOption(
+                            icon = Icons.Filled.VolumeUp,
+                            title = "Озвучить текст",
+                            description = "Прочитать содержимое сообщения голосом"
+                        ) {
+                            scope.launch {
+                                messageActionSheetState.hide()
+                                selectedMessage = null
+                                val language = textToSpeech.setLanguage(Locale.getDefault())
+                                if (!ttsReady || language == TextToSpeech.LANG_MISSING_DATA ||
+                                    language == TextToSpeech.LANG_NOT_SUPPORTED
+                                ) {
+                                    showNotice("Синтез речи недоступен для выбранного языка.")
+                                } else {
+                                    textToSpeech.speak(
+                                        messageForActions.content,
+                                        TextToSpeech.QUEUE_FLUSH,
+                                        null,
+                                        "aidroid-message-${messageForActions.id}"
+                                    )
+                                    showNotice("Чтение сообщения запущено")
+                                }
+                            }
+                        }
+                    }
                     MessageActionOption(
                         icon = Icons.Filled.TextFields,
                         title = "Выделить текст",
