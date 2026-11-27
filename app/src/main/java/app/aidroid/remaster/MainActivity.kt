@@ -1696,11 +1696,17 @@ private fun ConversationScreen(
     var lastObservedMessageCount by remember(chat.id) { mutableIntStateOf(-1) }
     LaunchedEffect(chat.id, messages?.size) {
         val current = messages ?: return@LaunchedEffect
+        val wasNearBottom = if (lastObservedMessageCount < 0) {
+            true
+        } else {
+            val lastVisibleIndex = messageListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisibleIndex >= (lastObservedMessageCount - 2).coerceAtLeast(0)
+        }
         if (!hasPositionedInitialMessages) {
             if (current.isNotEmpty()) messageListState.scrollToItem(current.lastIndex)
             initialMessageIds = current.mapTo(mutableSetOf()) { it.id }
             hasPositionedInitialMessages = true
-        } else if (current.size > lastObservedMessageCount && current.isNotEmpty()) {
+        } else if (current.size > lastObservedMessageCount && current.isNotEmpty() && wasNearBottom) {
             messageListState.animateScrollToItem(current.lastIndex)
         }
         lastObservedMessageCount = current.size
@@ -1861,6 +1867,15 @@ private fun ConversationScreen(
                 }
             }
             else -> {
+                val isAtBottom by remember(loadedMessagesState.size) {
+                    derivedStateOf {
+                        val layout = messageListState.layoutInfo
+                        val lastVisible = layout.visibleItemsInfo.lastOrNull()
+                        layout.totalItemsCount == 0 ||
+                            (lastVisible?.index == layout.totalItemsCount - 1 &&
+                                lastVisible.offset + lastVisible.size <= layout.viewportEndOffset)
+                    }
+                }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     LazyColumn(
                         state = messageListState,
@@ -1884,16 +1899,6 @@ private fun ConversationScreen(
                                     }
                                 }
                             }
-                            val messageInteraction = remember(message.id) { MutableInteractionSource() }
-                            val messagePressed by messageInteraction.collectIsPressedAsState()
-                            val messagePressScale by animateFloatAsState(
-                                targetValue = if (messagePressed) 0.975f else 1f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ),
-                                label = "message-press-scale-${message.id}"
-                            )
                             val shouldAnimateEntry = hasPositionedInitialMessages &&
                                 message.id !in initialMessageIds &&
                                 message.id !in animatedMessageIds
@@ -1929,13 +1934,12 @@ private fun ConversationScreen(
                                             val progress = entryProgress.value
                                             val entryScale = 0.93f + 0.07f * progress
                                             alpha = progress
-                                            scaleX = messagePressScale * entryScale
-                                            scaleY = messagePressScale * entryScale
+                                            scaleX = entryScale
+                                            scaleY = entryScale
                                             translationY = (1f - progress) * 14.dp.toPx()
                                         }
                                         .clip(RoundedCornerShape(21.dp))
                                         .combinedClickable(
-                                            interactionSource = messageInteraction,
                                             indication = null,
                                             onClick = {},
                                             onLongClickLabel = "Действия с сообщением",
@@ -2000,6 +2004,40 @@ private fun ConversationScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                    AnimatedVisibility(
+                        visible = loadedMessagesState.isNotEmpty() && !isAtBottom,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+                        enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.82f, animationSpec = tween(180)),
+                        exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.88f, animationSpec = tween(140)),
+                        label = "jump-to-latest-message"
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            tonalElevation = 3.dp,
+                            shadowElevation = 7.dp,
+                            modifier = Modifier.size(46.dp)
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), CircleShape)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        if (loadedMessagesState.isNotEmpty()) {
+                                            messageListState.animateScrollToItem(loadedMessagesState.lastIndex)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = "Перейти к последнему сообщению",
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
                         }
                     }
@@ -2508,7 +2546,7 @@ private fun MessageBodyText(
             text = annotated,
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-            maxLines = if (expanded) Int.MAX_VALUE else 8,
+            maxLines = if (expanded) Int.MAX_VALUE else 14,
             overflow = TextOverflow.Ellipsis,
             onTextLayout = { canExpand = it.didOverflowHeight }
         )
