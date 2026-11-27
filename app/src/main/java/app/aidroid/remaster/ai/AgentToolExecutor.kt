@@ -85,6 +85,7 @@ class AgentToolExecutor(
         val key = providers.toolCredential("brave_search")
             ?: throw IllegalStateException("Добавь ключ Brave Search в настройках агента.")
         val query = arguments.string("query")
+        AgentSafetyPolicy.validateSearchQuery(query)
         require(query.isNotBlank() && query.length <= 600) { "Поисковый запрос должен содержать от 1 до 600 символов." }
         val freshness = arguments.stringOrNull("freshness")?.takeIf {
             it in setOf("any", "day", "week", "month", "year")
@@ -197,6 +198,7 @@ class AgentToolExecutor(
         val language = arguments.string("language").lowercase()
         require(language in setOf("python", "javascript")) { "Доступны только Python и JavaScript." }
         val code = arguments.string("code")
+        AgentSafetyPolicy.validateCode(code)
         require(code.isNotBlank() && code.length <= MAX_CODE_CHARS) { "Код должен содержать от 1 до $MAX_CODE_CHARS символов." }
         val stdin = arguments.stringOrNull("stdin").orEmpty().take(2000)
         return AgentToolResult(
@@ -220,6 +222,7 @@ class AgentToolExecutor(
         val language = action.subject.lowercase()
         require(language in setOf("python", "javascript")) { "Этот язык отключён." }
         require(action.body.length <= MAX_CODE_CHARS) { "Код превышает допустимую длину." }
+        AgentSafetyPolicy.validateCode(action.body)
 
         val apiRoot = if (base.endsWith("/api/v2")) base else "$base/api/v2"
         val runtimesRequest = Request.Builder().url("$apiRoot/runtimes").get().build()
