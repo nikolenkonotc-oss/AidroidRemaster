@@ -236,7 +236,7 @@ class WebResearchEngine {
         }
         val encodedQuery = URLEncoder.encode(query + freshnessFilter, Charsets.UTF_8.name())
         val url = "https://news.google.com/rss/search?q=$encodedQuery" +
-            "&hl=${URLEncoder.encode(language, Charsets.UTF_8.name())}" +
+            "&hl=${URLEncoder.encode(languageTag, Charsets.UTF_8.name())}" +
             "&gl=$country&ceid=$country:${URLEncoder.encode(language, Charsets.UTF_8.name())}"
         val request = Request.Builder()
             .url(url)
