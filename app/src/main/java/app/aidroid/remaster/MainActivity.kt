@@ -747,7 +747,11 @@ private fun ChatListScreen(
                     .clip(addShape)
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFFD0BCFF), Color(0xFF9272E6), Color(0xFF7251C5))
+                            listOf(
+                                                Color(0xFFD0BCFF).copy(alpha = 0.90f),
+                                                Color(0xFF9272E6).copy(alpha = 0.86f),
+                                                Color(0xFF7251C5).copy(alpha = 0.90f)
+                                            )
                         )
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
@@ -1569,7 +1573,9 @@ private fun ConversationScreen(
                     OutlinedTextField(
                         value = localText,
                         onValueChange = { localText = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).animateContentSize(
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ),
                         placeholder = { Text("Сообщение...") },
                         shape = RoundedCornerShape(19.dp),
                         maxLines = 4,
@@ -2030,7 +2036,7 @@ private fun Modifier.pressScaleClickable(
 private fun GlowSendButton(enabled: Boolean, loading: Boolean = false, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val elevation by animateDpAsState(if (enabled) 16.dp else 2.dp, tween(220), label = "send-glow")
+    val elevation by animateDpAsState(if (enabled || loading) 16.dp else 2.dp, tween(260), label = "send-glow")
     val scale by animateFloatAsState(if (pressed) 0.90f else 1f, tween(150), label = "send-scale")
     Box(
         Modifier.size(51.dp).graphicsLayer { scaleX = scale; scaleY = scale }
@@ -2039,9 +2045,9 @@ private fun GlowSendButton(enabled: Boolean, loading: Boolean = false, onClick: 
             .background(
                 if (enabled) Brush.linearGradient(
                     listOf(
-                        Color(0xFFDCCBFF).copy(alpha = 0.96f),
-                        Violet.copy(alpha = 0.94f),
-                        Color(0xFF7654C8).copy(alpha = 0.96f)
+                        Color(0xFFDCCBFF).copy(alpha = 0.90f),
+                        Violet.copy(alpha = 0.88f),
+                        Color(0xFF7654C8).copy(alpha = 0.90f)
                     )
                 ) else Brush.linearGradient(listOf(Color(0xFFAAA3B8), Color(0xFF827B91)))
             )
