@@ -11,11 +11,13 @@ import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class DocumentTextExtractor(context: Context, private val storage: AttachmentStorage) {
     private val appContext = context.applicationContext
 
-    suspend fun extract(attachment: StoredAttachment): String {
+    suspend fun extract(attachment: StoredAttachment): String = withContext(Dispatchers.IO) {
         val file = storage.resolveFile(attachment)
         require(file.length() <= MAX_DOCUMENT_BYTES) { "Документ превышает лимит 25 МБ." }
         val extension = attachment.displayName.substringAfterLast('.', "").lowercase()
@@ -35,7 +37,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
                 "Формат .$extension пока не поддерживается для чтения. Поддерживаются ZIP (текстовые файлы внутри), PDF, DOCX, XLSX, PPTX, TXT, MD, CSV, JSON, XML и HTML."
             )
         }
-        return extracted.trim().take(MAX_EXTRACTED_CHARS)
+        extracted.trim().take(MAX_EXTRACTED_CHARS)
     }
 
     private fun readText(file: File): String =
@@ -63,9 +65,8 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
                     val bytes = zip.getInputStream(entry).use { input ->
                         readBoundedArchiveEntry(input, remainingBytes)
                     } ?: continue
-                    if (bytes.isEmpty() || !looksLikeText(bytes)) continue
-
                     totalBytesRead += bytes.size
+                    if (bytes.isEmpty() || !looksLikeText(bytes)) continue
                     val rawText = String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
                     val extension = entry.name.substringAfterLast('.', "").lowercase()
                     val text = if (extension in HTML_EXTENSIONS) extractHtmlText(rawText) else rawText
@@ -330,7 +331,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
         private val ARCHIVE_TEXT_EXTENSIONS = setOf(
             "txt", "md", "csv", "tsv", "json", "xml", "html", "htm", "log",
             "kt", "kts", "java", "js", "ts", "tsx", "jsx", "py", "gradle",
-            "properties", "yaml", "yml", "toml", "sql", "sh", "css", "html"
+            "properties", "yaml", "yml", "toml", "sql", "sh", "css"
         )
         private val TEXT_EXTENSIONS = setOf("txt", "md", "csv", "tsv", "json", "xml", "html", "htm", "log")
         private val HTML_EXTENSIONS = setOf("html", "htm")
