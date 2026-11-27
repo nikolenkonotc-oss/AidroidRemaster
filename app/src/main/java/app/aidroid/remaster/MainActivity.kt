@@ -88,6 +88,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.awaitEachGesture
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
@@ -1867,6 +1871,7 @@ private fun ConversationScreen(
                 }
             }
             else -> {
+                var isMessageListTouching by remember(chat.id) { mutableStateOf(false) }
                 val isAtBottom by remember(loadedMessagesState.size) {
                     derivedStateOf {
                         val layout = messageListState.layoutInfo
@@ -1879,7 +1884,19 @@ private fun ConversationScreen(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     LazyColumn(
                         state = messageListState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().pointerInput(chat.id) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                isMessageListTouching = true
+                                try {
+                                    do {
+                                        val event = awaitPointerEvent()
+                                    } while (event.changes.any { it.pressed })
+                                } finally {
+                                    isMessageListTouching = false
+                                }
+                            }
+                        },
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
@@ -1899,6 +1916,16 @@ private fun ConversationScreen(
                                     }
                                 }
                             }
+                            val messageInteraction = remember(message.id) { MutableInteractionSource() }
+                            val messagePressed by messageInteraction.collectIsPressedAsState()
+                            val messagePressScale by animateFloatAsState(
+                                targetValue = if (messagePressed) 0.985f else 1f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "message-press-scale-${message.id}"
+                            )
                             val shouldAnimateEntry = hasPositionedInitialMessages &&
                                 message.id !in initialMessageIds &&
                                 message.id !in animatedMessageIds
@@ -1934,13 +1961,13 @@ private fun ConversationScreen(
                                             val progress = entryProgress.value
                                             val entryScale = 0.93f + 0.07f * progress
                                             alpha = progress
-                                            scaleX = entryScale
-                                            scaleY = entryScale
+                                            scaleX = entryScale * messagePressScale
+                                            scaleY = entryScale * messagePressScale
                                             translationY = (1f - progress) * 14.dp.toPx()
                                         }
                                         .clip(RoundedCornerShape(21.dp))
                                         .combinedClickable(
-                                            interactionSource = null,
+                                            interactionSource = messageInteraction,
                                             indication = null,
                                             onClick = {},
                                             onLongClickLabel = "Действия с сообщением",
@@ -2010,13 +2037,14 @@ private fun ConversationScreen(
                     }
                     Box(Modifier.fillMaxSize()) {
                         val jumpVisible = loadedMessagesState.isNotEmpty() && !isAtBottom
+                        val jumpAvailable = jumpVisible && !isMessageListTouching
                         val jumpAlpha by animateFloatAsState(
-                            targetValue = if (jumpVisible) 1f else 0f,
+                            targetValue = if (jumpAvailable) 1f else 0f,
                             animationSpec = tween(160, easing = FastOutSlowInEasing),
                             label = "jump-to-latest-alpha"
                         )
                         val jumpScale by animateFloatAsState(
-                            targetValue = if (jumpVisible) 1f else 0.86f,
+                            targetValue = if (jumpAvailable) 1f else 0.86f,
                             animationSpec = tween(180, easing = FastOutSlowInEasing),
                             label = "jump-to-latest-scale"
                         )
@@ -2037,7 +2065,7 @@ private fun ConversationScreen(
                                 .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), CircleShape)
                         ) {
                             IconButton(
-                                enabled = jumpVisible,
+                                enabled = jumpAvailable,
                                 onClick = {
                                     scope.launch {
                                         if (loadedMessagesState.isNotEmpty()) {
