@@ -47,6 +47,8 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -263,17 +265,17 @@ private fun AuroraBackdrop(dark: Boolean) {
             )
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(violet.copy(alpha = if (dark) 0.38f else 0.34f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(violet.copy(alpha = if (dark) 0.38f else 0.18f), Color.Transparent)),
             radius = size.minDimension * 0.78f,
             center = Offset(w * (0.12f + phase * 0.34f), h * (0.12f + drift * 0.08f))
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(aqua.copy(alpha = if (dark) 0.28f else 0.38f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(aqua.copy(alpha = if (dark) 0.28f else 0.20f), Color.Transparent)),
             radius = size.minDimension * 0.72f,
             center = Offset(w * (0.92f - phase * 0.28f), h * (0.67f - drift * 0.12f))
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(rose.copy(alpha = if (dark) 0.18f else 0.30f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(rose.copy(alpha = if (dark) 0.18f else 0.16f), Color.Transparent)),
             radius = size.minDimension * 0.56f,
             center = Offset(w * (0.58f - phase * 0.12f), h * (0.94f - drift * 0.18f))
         )
@@ -289,9 +291,11 @@ private fun GlassPanel(
 ) {
     val dark = MaterialTheme.colorScheme.background.red < 0.2f
     val shape = RoundedCornerShape(cornerRadius.dp)
-    val baseTop = if (dark) Color(0xFF27253A).copy(alpha = 0.78f) else Color(0xFFFDFEFF).copy(alpha = 0.88f)
-    val baseBottom = if (dark) Color(0xFF111827).copy(alpha = 0.82f) else Color(0xFFE5EAF3).copy(alpha = 0.82f)
-    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
+    // Light glass must stay nearly opaque: strong translucency lets the aurora
+    // bleed through text and creates the pale rectangular artifacts seen on cards.
+    val baseTop = if (dark) Color(0xFF27253A).copy(alpha = 0.78f) else Color(0xFFFCFCFF).copy(alpha = 0.97f)
+    val baseBottom = if (dark) Color(0xFF111827).copy(alpha = 0.82f) else Color(0xFFE9EDF5).copy(alpha = 0.96f)
+    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFF777184).copy(alpha = 0.28f)
     val accent = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
@@ -302,7 +306,7 @@ private fun GlassPanel(
                     listOf(
                         if (highlighted) accent.copy(alpha = if (dark) 0.30f else 0.10f) else baseTop,
                         baseBottom,
-                        if (dark) Color(0xFF182A35).copy(alpha = 0.62f) else Color(0xFFDCEDEA).copy(alpha = 0.28f)
+                        if (dark) Color(0xFF182A35).copy(alpha = 0.62f) else Color(0xFFE7F0F0).copy(alpha = 0.94f)
                     )
                 )
             )
@@ -311,7 +315,7 @@ private fun GlassPanel(
         Box(
             Modifier.matchParentSize().background(
                 Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = if (dark) 0.16f else 0.045f), Color.Transparent),
+                    colors = listOf(accent.copy(alpha = if (dark) 0.16f else 0.018f), Color.Transparent),
                     center = Offset(0f, 0f),
                     radius = 760f
                 )
@@ -558,8 +562,12 @@ private fun ChatWorkspace(
 ) {
     val scope = rememberCoroutineScope()
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    val chats by (if (showArchived) repository.archivedChats() else repository.activeChats())
-        .collectAsState(initial = emptyList())
+    val chatsState by produceState<List<ChatEntity>?>(initialValue = null, key1 = showArchived) {
+        value = null
+        val source = if (showArchived) repository.archivedChats() else repository.activeChats()
+        source.collect { value = it }
+    }
+    val chats = chatsState.orEmpty()
 
     // null means Room has not emitted the first result yet. This prevents the
     // empty-chat welcome card from flashing over an existing conversation.
@@ -584,7 +592,15 @@ private fun ChatWorkspace(
         label = "chat-list-conversation-transition"
     ) { destinationChatId ->
         if (destinationChatId == null) {
-            ChatListScreen(
+            if (chatsState == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.4.dp
+                    )
+                }
+            } else ChatListScreen(
                 chats = chats,
                 archived = showArchived,
                 onToggleArchived = { showArchived = it },
@@ -730,6 +746,7 @@ private fun ChatListScreen(
 
         Row(
             Modifier.fillMaxWidth()
+                .animateContentSize(tween(260, easing = FastOutSlowInEasing))
                 .clip(RoundedCornerShape(18.dp))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f))
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
@@ -738,14 +755,19 @@ private fun ChatListScreen(
         ) {
             listOf(false to "Все чаты", true to "Архив").forEach { (isArchive, label) ->
                 val selected = archived == isArchive
+                val selectedProgress by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0f,
+                    animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    label = "archive-tab-selection"
+                )
                 Row(
                     Modifier.weight(1f)
                         .clip(RoundedCornerShape(14.dp))
                         .background(
                             if (selected) Brush.linearGradient(
                                 listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.34f),
-                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.20f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.34f * selectedProgress),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.20f * selectedProgress)
                                 )
                             ) else Brush.linearGradient(
                                 listOf(Color.Transparent, Color.Transparent)
@@ -843,7 +865,7 @@ private fun ChatListScreen(
                 contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
             ) {
                 items(filtered, key = { it.id }) { chat ->
-                    Box(Modifier.fillMaxWidth().animateItem()) {
+                    Box(Modifier.fillMaxWidth()) {
                         ChatListItem(
                             chat,
                             onOpen = { onOpen(chat.id) },
@@ -1202,7 +1224,11 @@ private fun ConversationScreen(
                         var messageMenuExpanded by remember(message.id) { mutableStateOf(false) }
                         var messageAnimatedIn by remember(message.id) { mutableStateOf(false) }
                         LaunchedEffect(message.id, animatedMessageId) {
-                            if (message.id == animatedMessageId) messageAnimatedIn = true
+                            if (message.id == animatedMessageId) {
+                                messageAnimatedIn = false
+                                delay(48)
+                                messageAnimatedIn = true
+                            }
                         }
                         val messageContent: @Composable ColumnScope.() -> Unit = {
                             if (message.content.isNotBlank()) {
@@ -1216,19 +1242,31 @@ private fun ConversationScreen(
                                     openStoredAttachment(context, attachment)?.let { attachmentError = it }
                                 }
                             }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                Box {
-                                    PressAnimatedIconButton(
-                                        onClick = { messageMenuExpanded = true },
-                                        icon = Icons.Filled.MoreHoriz,
-                                        contentDescription = "Действия с сообщением",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(30.dp),
-                                        iconModifier = Modifier.size(18.dp)
-                                    )
+                        }
+                        val messageRow: @Composable (Modifier) -> Unit = { itemModifier ->
+                            Row(
+                                itemModifier.fillMaxWidth(),
+                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                            ) {
+                                Box(
+                                    Modifier.widthIn(max = 320.dp)
+                                        .pointerInput(message.id) {
+                                            detectTapGestures(onLongPress = { messageMenuExpanded = true })
+                                        }
+                                ) {
+                                    GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 21, highlighted = isUser) {
+                                        Column(
+                                            Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                                            content = messageContent
+                                        )
+                                    }
                                     DropdownMenu(
                                         expanded = messageMenuExpanded,
-                                        onDismissRequest = { messageMenuExpanded = false }
+                                        onDismissRequest = { messageMenuExpanded = false },
+                                        shape = RoundedCornerShape(18.dp),
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        tonalElevation = 8.dp
                                     ) {
                                         if (message.content.isNotBlank()) {
                                             DropdownMenuItem(
@@ -1262,23 +1300,9 @@ private fun ConversationScreen(
                                 }
                             }
                         }
-                        val messageRow: @Composable (Modifier) -> Unit = { itemModifier ->
-                            Row(
-                                itemModifier.fillMaxWidth(),
-                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                            ) {
-                                GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
-                                    Column(
-                                        Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                                        content = messageContent
-                                    )
-                                }
-                            }
-                        }
                         if (message.id == animatedMessageId) {
                             AnimatedVisibility(
-                                modifier = Modifier.fillMaxWidth().animateItem(),
+                                modifier = Modifier.fillMaxWidth(),
                                 visible = messageAnimatedIn,
                                 enter = fadeIn(tween(260)) + slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 7 } +
                                     scaleIn(initialScale = 0.975f, animationSpec = tween(280, easing = FastOutSlowInEasing)),
@@ -1286,7 +1310,7 @@ private fun ConversationScreen(
                                 label = "new-message-${message.id}"
                             ) { messageRow(Modifier) }
                         } else {
-                            messageRow(Modifier.animateItem())
+                            messageRow(Modifier)
                         }
                     }
                 }
