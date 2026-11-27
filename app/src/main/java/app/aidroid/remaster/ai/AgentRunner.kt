@@ -262,7 +262,7 @@ class AgentRunner(
         val causes = generateSequence(error) { it.cause }.take(8).toList()
         causes.filterIsInstance<UnknownHostException>().firstOrNull()?.let { dnsError ->
             val raw = dnsError.message.orEmpty()
-            val host = Regex("""(?i)(?:resolve host|host)\\s+['"]?([^'"\\s]+)""")
+            val host = Regex("""(?i)(?:resolve host|host)\s+['"]?([^'"\s]+)""")
                 .find(raw)?.groupValues?.getOrNull(1)
             return if (host != null) {
                 "DNS не смог найти сервер «$host». Проверь написание домена, DNS и доступность адреса. "
