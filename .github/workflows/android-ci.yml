@@ -1,4 +1,3 @@
-
 name: Android CI
 
 on:
@@ -42,12 +41,29 @@ jobs:
       - name: Unit tests
         run: gradle :app:testDebugUnitTest
 
-      - name: Assemble debug APK
-        run: gradle :app:assembleDebug
+      - name: Assemble release APK
+        run: gradle :app:assembleRelease
 
-      - name: Upload debug APK
+      - name: Package release ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/aidroid-remaster-release
+          cp app/build/outputs/apk/release/*.apk dist/aidroid-remaster-release/
+          cat > dist/aidroid-remaster-release/BUILD-INFO.txt <<'EOF'
+          Aidroid Remaster
+          Build type: release
+          Version: 0.2.0-alpha.9
+          Application ID: app.aidroid.remaster
+          Signing: unsigned (no release keystore is configured in this repository)
+          EOF
+          cd dist
+          zip -r aidroid-remaster-release.zip aidroid-remaster-release
+
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aidroid-remaster-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: aidroid-remaster-release
+          path: dist/aidroid-remaster-release.zip
           if-no-files-found: error
+          retention-days: 14
