@@ -2381,7 +2381,9 @@ private fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ProfileAvatar(
-                    source = profile.avatarUri.ifBlank { profile.googlePhotoUrl },
+                    source = if (profile.isSignedIn) {
+                        profile.avatarUri.ifBlank { profile.cloudAvatarUrl.ifBlank { profile.googlePhotoUrl } }
+                    } else "",
                     displayName = profile.displayName,
                     modifier = Modifier.size(51.dp),
                     onClick = onOpenAccount
@@ -2421,15 +2423,23 @@ private fun SettingsScreen(
                 Switch(checked = darkTheme, onCheckedChange = onThemeChange)
             }
         }
-        InfoCard(Icons.Filled.Security, "Локальное хранение", "История чатов хранится в базе Room на устройстве. Внешняя передача пока не выполняется.")
-        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.9 · Aurora Glass")
+        InfoCard(
+            Icons.Filled.Security,
+            "Локальное хранение",
+            "Чаты доступны офлайн в Room. После входа через Google текстовая история и профиль синхронизируются через Firebase; файлы вложений пока остаются на устройстве."
+        )
+        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.10 · Aurora Glass")
     }
 }
 @Composable
 private fun AccountScreen(
     profile: AccountProfile,
     googleLoading: Boolean,
+    googleReady: Boolean,
+    syncLoading: Boolean,
+    syncStatus: String?,
     errorMessage: String?,
+    onSyncNow: () -> Unit,
     onBack: () -> Unit,
     onProfileChange: (AccountProfile) -> Unit,
     onLocalContinue: () -> Unit,
@@ -2475,12 +2485,16 @@ private fun AccountScreen(
             if (signedIn) {
                 ProfileEditor(
                     profile = profile,
+                    syncLoading = syncLoading,
+                    syncStatus = syncStatus,
+                    onSyncNow = onSyncNow,
                     onProfileChange = onProfileChange,
                     onSignOut = onSignOut
                 )
             } else {
                 AccountSignInOptions(
                     loading = googleLoading,
+                    googleReady = googleReady,
                     errorMessage = errorMessage,
                     onGoogleSignIn = onGoogleSignIn,
                     onLocalContinue = onLocalContinue
@@ -2493,6 +2507,7 @@ private fun AccountScreen(
 @Composable
 private fun AccountSignInOptions(
     loading: Boolean,
+    googleReady: Boolean,
     errorMessage: String?,
     onGoogleSignIn: () -> Unit,
     onLocalContinue: () -> Unit
@@ -2531,12 +2546,23 @@ private fun AccountSignInOptions(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 AccountPrimaryButton(
-                    text = if (loading) "Подключаем Google..." else "Продолжить с Google",
+                    text = when {
+                        loading -> "Подключаем Google..."
+                        googleReady -> "Продолжить с Google"
+                        else -> "Google пока не настроен"
+                    },
                     icon = Icons.Filled.AccountCircle,
-                    enabled = !loading,
+                    enabled = !loading && googleReady,
                     loading = loading,
                     onClick = onGoogleSignIn
                 )
+                if (!googleReady) {
+                    Text(
+                        "Для выбора аккаунта и облачной синхронизации нужно подключить OAuth и Firebase. Настройка описана в docs/GOOGLE_AUTH_SETUP.md.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
                 AccountSecondaryButton(
                     text = "Продолжить локально",
                     icon = Icons.Filled.PersonOutline,
@@ -2576,6 +2602,9 @@ private fun AccountSignInOptions(
 @Composable
 private fun ProfileEditor(
     profile: AccountProfile,
+    syncLoading: Boolean,
+    syncStatus: String?,
+    onSyncNow: () -> Unit,
     onProfileChange: (AccountProfile) -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -2592,7 +2621,14 @@ private fun ProfileEditor(
             } catch (_: SecurityException) {
                 // Some photo picker providers grant a temporary permission only.
             }
-            onProfileChange(profile.copy(avatarUri = uri.toString(), googlePhotoUrl = ""))
+            onProfileChange(
+                profile.copy(
+                    avatarUri = uri.toString(),
+                    googlePhotoUrl = "",
+                    cloudAvatarUrl = "",
+                    syncedAvatarUri = ""
+                )
+            )
         }
     }
 
@@ -2605,7 +2641,7 @@ private fun ProfileEditor(
             ) {
                 Box(contentAlignment = Alignment.BottomEnd) {
                     ProfileAvatar(
-                        source = profile.avatarUri.ifBlank { profile.googlePhotoUrl },
+                        source = profile.avatarUri.ifBlank { profile.cloudAvatarUrl.ifBlank { profile.googlePhotoUrl } },
                         displayName = profile.displayName,
                         modifier = Modifier.size(94.dp),
                         onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -2699,11 +2735,47 @@ private fun ProfileEditor(
             }
         }
 
-        InfoCard(
-            Icons.Filled.Security,
-            "Сохранение профиля",
-            "Имя, статус и аватар сохраняются автоматически на устройстве. Облачная синхронизация пока не включена."
-        )
+        if (profile.accountType == "google") {
+            GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 23, highlighted = true) {
+                Column(
+                    Modifier.fillMaxWidth().padding(17.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Icon(Icons.Filled.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Облачная синхронизация", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(
+                        "Профиль и история текстовых чатов сохраняются в твоём Firebase-аккаунте и доступны на других устройствах.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    AccountSecondaryButton(
+                        text = if (syncLoading) "Синхронизируем..." else "Синхронизировать сейчас",
+                        icon = Icons.Filled.Sync,
+                        enabled = !syncLoading,
+                        onClick = onSyncNow
+                    )
+                    AnimatedVisibility(
+                        visible = !syncStatus.isNullOrBlank(),
+                        enter = fadeIn(tween(160)) + expandVertically(tween(180)),
+                        exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
+                    ) {
+                        Text(
+                            syncStatus.orEmpty(),
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+        } else {
+            InfoCard(
+                Icons.Filled.Security,
+                "Локальный профиль",
+                "Имя, статус и аватар хранятся на этом устройстве. Вход через Google включает облачную синхронизацию."
+            )
+        }
         AccountSecondaryButton(
             text = "Выйти из аккаунта",
             icon = Icons.Filled.Logout,
