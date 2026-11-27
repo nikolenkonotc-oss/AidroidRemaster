@@ -316,9 +316,18 @@ private fun GlassPanel(
     modifier: Modifier = Modifier,
     cornerRadius: Int = 26,
     highlighted: Boolean = false,
+    animateShadow: Boolean = false,
+    shadowElevation: androidx.compose.ui.unit.Dp? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val dark = MaterialTheme.colorScheme.background.red < 0.2f
+    val targetShadow = shadowElevation ?: if (dark) 24.dp else 10.dp
+    val animatedShadow by animateDpAsState(
+        targetValue = targetShadow,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "glass-panel-shadow"
+    )
+    val panelShadow = if (animateShadow) animatedShadow else targetShadow
     val shape = RoundedCornerShape(cornerRadius.dp)
     val accent = MaterialTheme.colorScheme.primary
     val panelColors = if (dark) {
@@ -337,7 +346,7 @@ private fun GlassPanel(
     val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFD7D2E2)
     Box(
         modifier = modifier
-            .shadow(if (dark) 24.dp else 10.dp, shape, clip = false)
+            .shadow(panelShadow, shape, clip = false)
             .clip(shape)
             .background(Brush.linearGradient(panelColors))
             .border(
@@ -1026,36 +1035,95 @@ private fun ChatListItem(
                         .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.985f))
                         .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), menuShape)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Переименовать", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
-                        leadingIcon = { Icon(Icons.Filled.Edit, null, tint = MaterialTheme.colorScheme.primary) },
-                        onClick = { menu = false; onRename() },
-                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (chat.isPinned) "Открепить" else "Закрепить", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
-                        leadingIcon = { Icon(Icons.Filled.PushPin, null, tint = MaterialTheme.colorScheme.secondary) },
-                        onClick = { menu = false; onPin() },
-                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (chat.isArchived) "Вернуть из архива" else "Архивировать", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
-                        leadingIcon = { Icon(Icons.Filled.Archive, null, tint = MaterialTheme.colorScheme.secondary) },
-                        onClick = { menu = false; onArchive() },
-                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                    DropdownMenuItem(
-                        text = { Text("Удалить", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold) },
-                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = { menu = false; onDelete() },
-                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
-                    )
+                    Column(
+                        Modifier.padding(vertical = 7.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        AuroraMenuItem(
+                            label = "Переименовать",
+                            icon = Icons.Filled.Edit,
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = { menu = false; onRename() }
+                        )
+                        AuroraMenuItem(
+                            label = if (chat.isPinned) "Открепить" else "Закрепить",
+                            icon = Icons.Filled.PushPin,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            onClick = { menu = false; onPin() }
+                        )
+                        AuroraMenuItem(
+                            label = if (chat.isArchived) "Вернуть из архива" else "Архивировать",
+                            icon = Icons.Filled.Archive,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            onClick = { menu = false; onArchive() }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 3.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        )
+                        AuroraMenuItem(
+                            label = "Удалить",
+                            icon = Icons.Filled.Delete,
+                            tint = MaterialTheme.colorScheme.error,
+                            destructive = true,
+                            onClick = { menu = false; onDelete() }
+                        )
+                    }
                 }
             }
         }
     }
 }
+@Composable
+private fun AuroraMenuItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val shape = RoundedCornerShape(14.dp)
+    val background by animateColorAsState(
+        targetValue = if (pressed) {
+            MaterialTheme.colorScheme.primary.copy(alpha = if (destructive) 0.10f else 0.13f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(110),
+        label = "aurora-menu-press-background"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.985f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "aurora-menu-press-scale"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(shape)
+            .background(background)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
+        Text(
+            label,
+            color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (destructive) FontWeight.SemiBold else FontWeight.Medium,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationScreen(
@@ -1284,6 +1352,16 @@ private fun ConversationScreen(
                                 }
                             }
                             val isNewMessage = knownMessageIds?.contains(message.id) == false
+                            val messageInteraction = remember(message.id) { MutableInteractionSource() }
+                            val messagePressed by messageInteraction.collectIsPressedAsState()
+                            val messagePressScale by animateFloatAsState(
+                                targetValue = if (messagePressed) 0.975f else 1f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "message-press-scale-${message.id}"
+                            )
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = !isNewMessage,
                                 enter = fadeIn(tween(190)) +
@@ -1291,7 +1369,7 @@ private fun ConversationScreen(
                                     scaleIn(
                                         initialScale = 0.94f,
                                         animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
                                             stiffness = Spring.StiffnessMediumLow
                                         )
                                     ),
@@ -1311,13 +1389,20 @@ private fun ConversationScreen(
                                     horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                                 ) {
                                 GlassPanel(
-                                    modifier = Modifier.widthIn(max = 320.dp).combinedClickable(
-                                        onClick = {},
-                                        onLongClickLabel = "Действия с сообщением",
-                                        onLongClick = { selectedMessage = message }
-                                    ),
+                                    modifier = Modifier.widthIn(max = 320.dp)
+                                        .graphicsLayer { scaleX = messagePressScale; scaleY = messagePressScale }
+                                        .clip(RoundedCornerShape(21.dp))
+                                        .combinedClickable(
+                                            interactionSource = messageInteraction,
+                                            indication = null,
+                                            onClick = {},
+                                            onLongClickLabel = "Действия с сообщением",
+                                            onLongClick = { selectedMessage = message }
+                                        ),
                                     cornerRadius = 21,
-                                    highlighted = isUser
+                                    highlighted = isUser,
+                                    animateShadow = true,
+                                    shadowElevation = if (isNewMessage) 1.dp else null
                                 ) {
                                     Column(
                                         Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
