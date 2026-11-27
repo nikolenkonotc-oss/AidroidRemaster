@@ -45,6 +45,7 @@ class WebResearchEngineTest {
                 <title><![CDATA[GTA VI news &amp; updates]]></title>
                 <link>https://news.google.com/rss/articles/example?source=feed&amp;id=7</link>
                 <description><![CDATA[<p>Latest <b>confirmed</b> details &amp; context.</p>]]></description>
+                <pubDate>Sat, 28 Nov 2026 10:30:00 GMT</pubDate>
               </item>
               <item>
                 <title>Unsafe local result</title>
