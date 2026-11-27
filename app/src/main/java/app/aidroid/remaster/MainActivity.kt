@@ -14,6 +14,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -21,6 +23,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -116,6 +123,7 @@ private fun AidroidApp(repository: ChatRepository) {
             AuroraBackdrop(darkTheme)
             Scaffold(
                 containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground,
                 topBar = {
                     AidroidTopBar(
                         onSettings = { selectedScreen = Screen.SETTINGS },
@@ -126,24 +134,7 @@ private fun AidroidApp(repository: ChatRepository) {
                     )
                 },
                 bottomBar = {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                        tonalElevation = 0.dp
-                    ) {
-                        val icons = listOf(
-                            Icons.Filled.Home, Icons.Filled.Chat,
-                            Icons.Filled.SmartToy, Icons.Filled.Storage, Icons.Filled.Settings
-                        )
-                        Screen.values().forEachIndexed { index, screen ->
-                            NavigationBarItem(
-                                selected = selectedScreen == screen,
-                                onClick = { selectedScreen = screen },
-                                icon = { Icon(icons[index], contentDescription = screen.label) },
-                                label = { Text(screen.label, fontSize = 10.sp) },
-                                alwaysShowLabel = false
-                            )
-                        }
-                    }
+                    AidroidBottomBar(selectedScreen = selectedScreen, onSelect = { selectedScreen = it })
                 }
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
@@ -225,13 +216,13 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
             ) { Icon(Icons.Filled.AutoAwesome, null, tint = Color.White) }
             Spacer(Modifier.width(11.dp))
             Column {
-                Text("AIDROID", fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("AIDROID", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                 Text("REMASTER", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp)
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onNewChat) { Icon(Icons.Filled.AddComment, "Новый чат") }
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки") }
+            IconButton(onClick = onNewChat) { Icon(Icons.Filled.AddComment, "Новый чат", tint = MaterialTheme.colorScheme.onBackground) }
+            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки", tint = MaterialTheme.colorScheme.onBackground) }
         }
     }
 }
@@ -251,20 +242,30 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
             }
         }
         item {
+            val dark = MaterialTheme.colorScheme.background.red < 0.2f
+            val heroText = if (dark) Color(0xFFF9F6FF) else Color(0xFF241A38)
+            val heroMuted = if (dark) Color(0xFFD8D0E8) else Color(0xFF625873)
+            val heroAccent = if (dark) Cyan else Color(0xFF3B8290)
+            val heroBrush = if (dark) {
+                Brush.linearGradient(listOf(Color(0xFF33234F), Color(0xFF171D31), Color(0xFF12313A)))
+            } else {
+                Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF0E9FF), Color(0xFFE6F5F6)))
+            }
+            val heroBorder = if (dark) Color.White.copy(alpha = 0.18f) else Color(0xFF8F73D6).copy(alpha = 0.22f)
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = Color.Transparent,
-                modifier = Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.13f), RoundedCornerShape(28.dp))
+                modifier = Modifier.fillMaxWidth().border(1.dp, heroBorder, RoundedCornerShape(28.dp))
             ) {
-                Box(Modifier.background(Brush.linearGradient(listOf(Color(0xFF33234F), Color(0xFF171D31), Color(0xFF12313A)))).padding(22.dp)) {
+                Box(Modifier.background(heroBrush).padding(22.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).background(Cyan, CircleShape))
+                            Box(Modifier.size(8.dp).background(heroAccent, CircleShape))
                             Spacer(Modifier.width(8.dp))
-                            Text("СИСТЕМА ГОТОВА", color = Cyan, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
+                            Text("СИСТЕМА ГОТОВА", color = heroAccent, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
                         }
-                        Text("Продолжим\nразговор?", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Твои диалоги теперь сохраняются локально.", color = Color.White.copy(alpha = 0.78f))
+                        Text("Продолжим\\nразговор?", color = heroText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text("Твои диалоги теперь сохраняются локально.", color = heroMuted)
                         GlowButton("Открыть чаты", onOpenChats)
                     }
                 }
@@ -284,16 +285,26 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
 
 @Composable
 private fun GlowButton(text: String, onClick: () -> Unit) {
-    val infinite = rememberInfiniteTransition(label = "button-glow")
-    val pulse by infinite.animateFloat(
-        initialValue = 8f, targetValue = 16f,
-        animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
-        label = "glow"
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val glow by animateFloatAsState(
+        targetValue = when { pressed -> 22f; hovered -> 20f; else -> 7f },
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "button-glow"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else if (hovered) 1.025f else 1f,
+        animationSpec = tween(180),
+        label = "button-scale"
     )
     Button(
         onClick = onClick,
-        modifier = Modifier.shadow(pulse.dp, RoundedCornerShape(18.dp), clip = false)
-            .border(1.dp, VioletBright.copy(alpha = 0.45f), RoundedCornerShape(18.dp)),
+        interactionSource = interaction,
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(glow.dp, RoundedCornerShape(18.dp), clip = false)
+            .border(1.dp, VioletBright.copy(alpha = if (pressed || hovered) 0.9f else 0.42f), RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Color.White),
         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 14.dp)
@@ -306,12 +317,70 @@ private fun QuickCard(modifier: Modifier, icon: androidx.compose.ui.graphics.vec
         modifier = modifier,
         onClick = onClick,
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), contentColor = MaterialTheme.colorScheme.onSurface)
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun AidroidBottomBar(selectedScreen: Screen, onSelect: (Screen) -> Unit) {
+    val icons = listOf(Icons.Filled.Home, Icons.Filled.Chat, Icons.Filled.SmartToy, Icons.Filled.Storage, Icons.Filled.Settings)
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).navigationBarsPadding()
+            .padding(bottom = 8.dp).shadow(18.dp, RoundedCornerShape(28.dp), clip = false)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        tonalElevation = 0.dp
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Screen.values().forEachIndexed { index, screen ->
+                val selected = selectedScreen == screen
+                val interaction = remember { MutableInteractionSource() }
+                val pressed by interaction.collectIsPressedAsState()
+                val hovered by interaction.collectIsHoveredAsState()
+                val active = selected || pressed || hovered
+                val scale by animateFloatAsState(
+                    targetValue = if (pressed) 0.91f else if (hovered) 1.06f else 1f,
+                    animationSpec = tween(180), label = "nav-scale-${screen.name}"
+                )
+                val iconTint by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(180), label = "nav-icon-${screen.name}"
+                )
+                Column(
+                    Modifier.weight(1f).clip(RoundedCornerShape(19.dp)).hoverable(interaction)
+                        .clickable(interactionSource = interaction, indication = null) { onSelect(screen) }
+                        .graphicsLayer { scaleX = scale; scaleY = scale }
+                        .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent, RoundedCornerShape(19.dp))
+                        .padding(vertical = 7.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (active) {
+                            Box(Modifier.size(38.dp).background(
+                                Brush.radialGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = if (selected) 0.25f else 0.18f), Color.Transparent)),
+                                CircleShape
+                            ))
+                        }
+                        Icon(icons[index], contentDescription = screen.label, tint = iconTint, modifier = Modifier.size(22.dp))
+                    }
+                    Text(
+                        screen.label,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 9.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
         }
     }
 }
@@ -381,7 +450,7 @@ private fun ChatListScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text(if (archived) "Архив" else "Мои чаты", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(if (archived) "Архив" else "Мои чаты", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("${filtered.size} диалогов", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             GlowButton("Новый чат", onCreate)
@@ -453,7 +522,7 @@ private fun ChatListItem(
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), contentColor = MaterialTheme.colorScheme.onSurface)
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 13.dp, bottom = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
@@ -572,7 +641,7 @@ private fun GlowSendButton(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun PlaceholderScreen(title: String, description: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(title, color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         InfoCard(icon, title, description)
     }
 }
@@ -580,8 +649,8 @@ private fun PlaceholderScreen(title: String, description: String, icon: androidx
 @Composable
 private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit) {
     Column(Modifier.fillMaxSize().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))) {
+        Text("Настройки", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), contentColor = MaterialTheme.colorScheme.onSurface)) {
             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text("Тёмная тема", fontWeight = FontWeight.SemiBold)
@@ -591,13 +660,13 @@ private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit)
             }
         }
         InfoCard(Icons.Filled.Security, "Локальное хранение", "История чатов хранится в базе Room на устройстве. Внешняя передача пока не выполняется.")
-        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.2")
+        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.3")
     }
 }
 
 @Composable
 private fun InfoCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, description: String) {
-    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))) {
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), contentColor = MaterialTheme.colorScheme.onSurface)) {
         Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp))
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {

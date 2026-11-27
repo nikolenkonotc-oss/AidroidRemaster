@@ -4,7 +4,7 @@ Personal-first Android AI agent. Local-first, provider-agnostic, user-controlled
 
 ## Project status
 
-**UI + local chat persistence / milestone 0.2.0-alpha.2**
+**UI + local chat persistence / milestone 0.2.0-alpha.3**
 
 The app now includes a Compose navigation shell, Aurora-inspired light/dark themes, animated background and transitions, and local multi-chat persistence using Room. Each conversation has its own message history. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
 
