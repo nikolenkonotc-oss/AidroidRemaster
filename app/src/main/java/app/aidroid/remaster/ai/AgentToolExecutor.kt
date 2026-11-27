@@ -439,7 +439,7 @@ class AgentToolExecutor(
                         ?: ((root?.get("detail") as? JsonPrimitive)?.contentOrNull)
                 }.getOrNull()
                 val safeBody = body
-                    .filter { !it.isISOControl() || it == '\\n' || it == '\\r' || it == '\\t' }
+                    .filter { !it.isISOControl() || it == '\n' || it == '\r' || it == '\t' }
                     .trim()
                     .take(700)
                 throw IllegalStateException(
