@@ -43,6 +43,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -101,6 +103,7 @@ import app.aidroid.remaster.data.local.MessageEntity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
@@ -139,6 +142,14 @@ private fun AidroidApp(repository: ChatRepository) {
     var darkTheme by rememberSaveable { mutableStateOf(true) }
     var selectedScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var selectedChatId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val chatLists by produceState<Pair<List<ChatEntity>, List<ChatEntity>>?>(
+        initialValue = null,
+        key1 = repository
+    ) {
+        combine(repository.activeChats(), repository.archivedChats()) { active, archived ->
+            active to archived
+        }.collect { value = it }
+    }
 
     val scheme = if (darkTheme) {
         darkColorScheme(
@@ -156,23 +167,26 @@ private fun AidroidApp(repository: ChatRepository) {
         )
     } else {
         lightColorScheme(
-            primary = Color(0xFF6745C5),
+            primary = Color(0xFF6040B8),
             onPrimary = Color.White,
-            secondary = Color(0xFF24798B),
-            background = Color(0xFFEDF2F8),
-            surface = Color(0xFFF9FBFF),
-            surfaceVariant = Color(0xFFE5EAF3),
+            secondary = Color(0xFF216F7D),
+            background = Color(0xFFF1F0F7),
+            surface = Color(0xFFFCFBFF),
+            surfaceVariant = Color(0xFFE9E7F0),
             onBackground = Color(0xFF211D2D),
             onSurface = Color(0xFF211D2D),
-            onSurfaceVariant = Color(0xFF5F5B6C),
-            outline = Color(0xFF8B8799),
-            primaryContainer = Color(0xFFE7DFFF),
-            onPrimaryContainer = Color(0xFF2C1A55)
+            onSurfaceVariant = Color(0xFF5C566B),
+            outline = Color(0xFF817A91),
+            outlineVariant = Color(0xFFD8D3E2),
+            primaryContainer = Color(0xFFE8E1FA),
+            onPrimaryContainer = Color(0xFF2C1A55),
+            errorContainer = Color(0xFFFFE8EC),
+            onErrorContainer = Color(0xFF5A1728)
         )
     }
 
     MaterialTheme(colorScheme = scheme) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(scheme.background)) {
             AuroraBackdrop(darkTheme)
             Scaffold(
                 containerColor = Color.Transparent,
@@ -192,16 +206,11 @@ private fun AidroidApp(repository: ChatRepository) {
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
                     AnimatedContent(
+                        modifier = Modifier.fillMaxSize(),
                         targetState = selectedScreen,
                         transitionSpec = {
-                            (fadeIn(tween(280)) +
-                                slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { it / 14 } +
-                                scaleIn(initialScale = 0.985f, animationSpec = tween(320, easing = FastOutSlowInEasing)))
-                                .togetherWith(
-                                    fadeOut(tween(190)) +
-                                        slideOutHorizontally(animationSpec = tween(240, easing = FastOutSlowInEasing)) { -it / 22 } +
-                                        scaleOut(targetScale = 0.99f, animationSpec = tween(240))
-                                )
+                            fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
+                                .togetherWith(fadeOut(animationSpec = tween(150, easing = FastOutSlowInEasing)))
                         },
                         label = "main-screen"
                     ) { screen ->
@@ -212,6 +221,7 @@ private fun AidroidApp(repository: ChatRepository) {
                             )
                             Screen.CHAT -> ChatWorkspace(
                                 repository = repository,
+                                chatLists = chatLists,
                                 selectedChatId = selectedChatId,
                                 onSelectChat = { selectedChatId = it },
                                 onBackToChats = { selectedChatId = null }
@@ -263,17 +273,17 @@ private fun AuroraBackdrop(dark: Boolean) {
             )
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(violet.copy(alpha = if (dark) 0.38f else 0.34f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(violet.copy(alpha = if (dark) 0.38f else 0.085f), Color.Transparent)),
             radius = size.minDimension * 0.78f,
             center = Offset(w * (0.12f + phase * 0.34f), h * (0.12f + drift * 0.08f))
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(aqua.copy(alpha = if (dark) 0.28f else 0.38f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(aqua.copy(alpha = if (dark) 0.28f else 0.095f), Color.Transparent)),
             radius = size.minDimension * 0.72f,
             center = Offset(w * (0.92f - phase * 0.28f), h * (0.67f - drift * 0.12f))
         )
         drawCircle(
-            brush = Brush.radialGradient(listOf(rose.copy(alpha = if (dark) 0.18f else 0.30f), Color.Transparent)),
+            brush = Brush.radialGradient(listOf(rose.copy(alpha = if (dark) 0.18f else 0.07f), Color.Transparent)),
             radius = size.minDimension * 0.56f,
             center = Offset(w * (0.58f - phase * 0.12f), h * (0.94f - drift * 0.18f))
         )
@@ -289,41 +299,61 @@ private fun GlassPanel(
 ) {
     val dark = MaterialTheme.colorScheme.background.red < 0.2f
     val shape = RoundedCornerShape(cornerRadius.dp)
-    val baseTop = if (dark) Color(0xFF27253A).copy(alpha = 0.78f) else Color(0xFFFDFEFF).copy(alpha = 0.88f)
-    val baseBottom = if (dark) Color(0xFF111827).copy(alpha = 0.82f) else Color(0xFFE5EAF3).copy(alpha = 0.82f)
-    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
     val accent = MaterialTheme.colorScheme.primary
+    val panelColors = if (dark) {
+        listOf(
+            if (highlighted) Color(0xFF3B3159).copy(alpha = 0.92f) else Color(0xFF27253A).copy(alpha = 0.92f),
+            Color(0xFF111827).copy(alpha = 0.95f),
+            Color(0xFF182A35).copy(alpha = 0.90f)
+        )
+    } else {
+        listOf(
+            if (highlighted) Color(0xFFF4F0FF) else Color(0xFFFCFBFF),
+            Color(0xFFF3F1F8),
+            Color(0xFFEEF2F5)
+        )
+    }
+    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFD7D2E2)
     Box(
         modifier = modifier
-            .shadow(if (dark) 24.dp else 16.dp, shape, clip = false)
+            .shadow(if (dark) 24.dp else 10.dp, shape, clip = false)
             .clip(shape)
-            .background(
+            .background(Brush.linearGradient(panelColors))
+            .border(
+                1.dp,
                 Brush.linearGradient(
                     listOf(
-                        if (highlighted) accent.copy(alpha = if (dark) 0.30f else 0.10f) else baseTop,
-                        baseBottom,
-                        if (dark) Color(0xFF182A35).copy(alpha = 0.62f) else Color(0xFFDCEDEA).copy(alpha = 0.28f)
+                        edge,
+                        accent.copy(alpha = if (dark) 0.24f else 0.12f),
+                        edge.copy(alpha = if (dark) 0.72f else 0.82f)
+                    )
+                ),
+                shape
+            )
+    ) {
+        if (dark) {
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.radialGradient(
+                        colors = listOf(accent.copy(alpha = 0.13f), Color.Transparent),
+                        center = Offset(0f, 0f),
+                        radius = 760f
                     )
                 )
             )
-            .border(1.dp, Brush.linearGradient(listOf(edge, accent.copy(alpha = if (dark) 0.24f else 0.18f), edge.copy(alpha = 0.42f))), shape)
-    ) {
-        Box(
-            Modifier.matchParentSize().background(
-                Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = if (dark) 0.16f else 0.045f), Color.Transparent),
-                    center = Offset(0f, 0f),
-                    radius = 760f
-                )
-            )
-        )
+        }
         Box(
             Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
-                .background(Brush.horizontalGradient(listOf(Color.Transparent, edge, Color.Transparent)))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, edge.copy(alpha = if (dark) 0.88f else 0.58f), Color.Transparent)
+                    )
+                )
         )
         content()
     }
 }
+
 @Composable
 private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
     GlassPanel(
@@ -552,17 +582,19 @@ private fun AidroidBottomBar(selectedScreen: Screen, onSelect: (Screen) -> Unit)
 @Composable
 private fun ChatWorkspace(
     repository: ChatRepository,
+    chatLists: Pair<List<ChatEntity>, List<ChatEntity>>?,
     selectedChatId: Long?,
     onSelectChat: (Long?) -> Unit,
     onBackToChats: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    val chats by (if (showArchived) repository.archivedChats() else repository.activeChats())
-        .collectAsState(initial = emptyList())
+    val activeChats = chatLists?.first.orEmpty()
+    val archivedChats = chatLists?.second.orEmpty()
+    val chats = if (showArchived) archivedChats else activeChats
+    val allChats = if (chatLists == null) emptyList() else activeChats + archivedChats
+    val loading = chatLists == null
 
-    // null means Room has not emitted the first result yet. This prevents the
-    // empty-chat welcome card from flashing over an existing conversation.
     val messages by produceState<List<MessageEntity>?>(initialValue = null, key1 = selectedChatId) {
         value = null
         val chatId = selectedChatId ?: return@produceState
@@ -570,25 +602,22 @@ private fun ChatWorkspace(
     }
 
     AnimatedContent(
+        modifier = Modifier.fillMaxSize(),
         targetState = selectedChatId,
         transitionSpec = {
-            if (targetState != null) {
-                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it / 12 } +
-                    scaleIn(initialScale = 0.985f, animationSpec = tween(320)))
-                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { -it / 18 })
-            } else {
-                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 14 })
-                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { it / 18 })
-            }
+            fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
+                .togetherWith(fadeOut(animationSpec = tween(140, easing = FastOutSlowInEasing)))
         },
         label = "chat-list-conversation-transition"
     ) { destinationChatId ->
         if (destinationChatId == null) {
             ChatListScreen(
                 chats = chats,
+                loading = loading,
                 archived = showArchived,
                 onToggleArchived = { showArchived = it },
                 onCreate = {
+                    showArchived = false
                     scope.launch {
                         val id = repository.createChat()
                         onSelectChat(id)
@@ -601,7 +630,7 @@ private fun ChatWorkspace(
                 onDelete = { chat -> scope.launch { repository.delete(chat) } }
             )
         } else {
-            val destinationChat = chats.firstOrNull { it.id == destinationChatId }
+            val destinationChat = allChats.firstOrNull { it.id == destinationChatId }
             if (destinationChat == null) {
                 ConversationLoadingState()
             } else {
@@ -638,6 +667,7 @@ private fun ConversationLoadingState() {
 @Composable
 private fun ChatListScreen(
     chats: List<ChatEntity>,
+    loading: Boolean,
     archived: Boolean,
     onToggleArchived: (Boolean) -> Unit,
     onCreate: () -> Unit,
@@ -731,29 +761,40 @@ private fun ChatListScreen(
         Row(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f))
+                .background(
+                    if (MaterialTheme.colorScheme.background.red < 0.2f) MaterialTheme.colorScheme.surface.copy(alpha = 0.42f)
+                    else Color(0xFFE9E6F0)
+                )
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(false to "Все чаты", true to "Архив").forEach { (isArchive, label) ->
                 val selected = archived == isArchive
+                val tabProgress by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0f,
+                    animationSpec = tween(230, easing = FastOutSlowInEasing),
+                    label = "chat-filter-progress"
+                )
+                val tabTint by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(230, easing = FastOutSlowInEasing),
+                    label = "chat-filter-tint"
+                )
                 Row(
                     Modifier.weight(1f)
                         .clip(RoundedCornerShape(14.dp))
                         .background(
-                            if (selected) Brush.linearGradient(
+                            Brush.linearGradient(
                                 listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.34f),
-                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.20f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f * tabProgress),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f * tabProgress)
                                 )
-                            ) else Brush.linearGradient(
-                                listOf(Color.Transparent, Color.Transparent)
                             )
                         )
                         .border(
-                            if (selected) 1.dp else 0.dp,
-                            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f) else Color.Transparent,
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * tabProgress),
                             RoundedCornerShape(14.dp)
                         )
                         .pressScaleClickable(onClick = {
@@ -769,13 +810,13 @@ private fun ChatListScreen(
                     Icon(
                         if (isArchive) Icons.Filled.Archive else Icons.Filled.Forum,
                         contentDescription = null,
-                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = tabTint,
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(Modifier.width(7.dp))
                     Text(
                         label,
-                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else tabTint,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                     )
@@ -783,7 +824,15 @@ private fun ChatListScreen(
             }
         }
 
-        if (filtered.isEmpty()) {
+        if (loading) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.5.dp
+                )
+            }
+        } else if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
                     Column(
@@ -952,7 +1001,7 @@ private fun ChatListItem(
         }
     }
 }
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationScreen(
     chat: ChatEntity,
@@ -968,12 +1017,12 @@ private fun ConversationScreen(
     var showRename by remember { mutableStateOf(false) }
     var showAttachmentMenu by remember { mutableStateOf(false) }
     val attachmentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val messageActionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
-    var animatedMessageId by remember(chat.id) { mutableStateOf<Long?>(null) }
-    var previousMessageCount by remember(chat.id) { mutableIntStateOf(-1) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
 
@@ -985,31 +1034,20 @@ private fun ConversationScreen(
         }
     }
 
-    LaunchedEffect(messages?.size, messages?.lastOrNull()?.id) {
-        val current = messages ?: return@LaunchedEffect
-        if (previousMessageCount < 0) {
-            previousMessageCount = current.size
-        } else if (current.size > previousMessageCount) {
-            animatedMessageId = current.lastOrNull()?.id
-            previousMessageCount = current.size
-        } else {
-            previousMessageCount = current.size
-        }
-    }
     val pendingAttachments = remember(chat.id) { mutableStateListOf<StoredAttachment>() }
     var pendingCameraFile by remember(chat.id) { mutableStateOf<File?>(null) }
     val messageListState = rememberLazyListState()
     var hasPositionedInitialMessages by remember(chat.id) { mutableStateOf(false) }
+    var lastObservedMessageCount by remember(chat.id) { mutableIntStateOf(-1) }
     LaunchedEffect(chat.id, messages?.size) {
-        val loadedCount = messages?.size ?: 0
-        if (loadedCount > 0) {
-            if (!hasPositionedInitialMessages) {
-                messageListState.scrollToItem(loadedCount - 1)
-                hasPositionedInitialMessages = true
-            } else {
-                messageListState.animateScrollToItem(loadedCount - 1)
-            }
+        val current = messages ?: return@LaunchedEffect
+        if (!hasPositionedInitialMessages) {
+            if (current.isNotEmpty()) messageListState.scrollToItem(current.lastIndex)
+            hasPositionedInitialMessages = true
+        } else if (current.size > lastObservedMessageCount && current.isNotEmpty()) {
+            messageListState.animateScrollToItem(current.lastIndex)
         }
+        lastObservedMessageCount = current.size
     }
 
     fun addPickedUris(uris: List<Uri>) {
@@ -1199,11 +1237,6 @@ private fun ConversationScreen(
                     items(loadedMessagesState, key = { it.id }) { message ->
                         val isUser = message.role == "user"
                         val attachments = AttachmentJson.decode(message.attachmentsJson)
-                        var messageMenuExpanded by remember(message.id) { mutableStateOf(false) }
-                        var messageAnimatedIn by remember(message.id) { mutableStateOf(false) }
-                        LaunchedEffect(message.id, animatedMessageId) {
-                            if (message.id == animatedMessageId) messageAnimatedIn = true
-                        }
                         val messageContent: @Composable ColumnScope.() -> Unit = {
                             if (message.content.isNotBlank()) {
                                 MessageBodyText(message.id, message.content) { url ->
@@ -1216,77 +1249,26 @@ private fun ConversationScreen(
                                     openStoredAttachment(context, attachment)?.let { attachmentError = it }
                                 }
                             }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                Box {
-                                    PressAnimatedIconButton(
-                                        onClick = { messageMenuExpanded = true },
-                                        icon = Icons.Filled.MoreHoriz,
-                                        contentDescription = "Действия с сообщением",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(30.dp),
-                                        iconModifier = Modifier.size(18.dp)
-                                    )
-                                    DropdownMenu(
-                                        expanded = messageMenuExpanded,
-                                        onDismissRequest = { messageMenuExpanded = false }
-                                    ) {
-                                        if (message.content.isNotBlank()) {
-                                            DropdownMenuItem(
-                                                text = { Text("Копировать текст") },
-                                                leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
-                                                onClick = {
-                                                    messageMenuExpanded = false
-                                                    clipboard.setPrimaryClip(ClipData.newPlainText("Aidroid message", message.content))
-                                                    showNotice("Сообщение скопировано")
-                                                }
-                                            )
-                                        }
-                                        DropdownMenuItem(
-                                            text = { Text("Удалить сообщение", color = MaterialTheme.colorScheme.error) },
-                                            leadingIcon = { Icon(Icons.Filled.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
-                                            onClick = {
-                                                messageMenuExpanded = false
-                                                scope.launch {
-                                                    try {
-                                                        onDeleteMessage(message)
-                                                        showNotice("Сообщение удалено")
-                                                    } catch (cancelled: CancellationException) {
-                                                        throw cancelled
-                                                    } catch (error: Exception) {
-                                                        attachmentError = "Не удалось удалить сообщение: ${error.message ?: "ошибка хранилища"}"
-                                                    }
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
                         }
-                        val messageRow: @Composable (Modifier) -> Unit = { itemModifier ->
-                            Row(
-                                itemModifier.fillMaxWidth(),
-                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                        Row(
+                            Modifier.fillMaxWidth().animateItem(),
+                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                        ) {
+                            GlassPanel(
+                                modifier = Modifier.widthIn(max = 320.dp).combinedClickable(
+                                    onClick = {},
+                                    onLongClickLabel = "Действия с сообщением",
+                                    onLongClick = { selectedMessage = message }
+                                ),
+                                cornerRadius = 21,
+                                highlighted = isUser
                             ) {
-                                GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
-                                    Column(
-                                        Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                                        content = messageContent
-                                    )
-                                }
+                                Column(
+                                    Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                                    content = messageContent
+                                )
                             }
-                        }
-                        if (message.id == animatedMessageId) {
-                            AnimatedVisibility(
-                                modifier = Modifier.fillMaxWidth().animateItem(),
-                                visible = messageAnimatedIn,
-                                enter = fadeIn(tween(260)) + slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 7 } +
-                                    scaleIn(initialScale = 0.975f, animationSpec = tween(280, easing = FastOutSlowInEasing)),
-                                exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.98f, animationSpec = tween(150)),
-                                label = "new-message-${message.id}"
-                            ) { messageRow(Modifier) }
-                        } else {
-                            messageRow(Modifier.animateItem())
                         }
                     }
                 }
@@ -1428,6 +1410,73 @@ private fun ConversationScreen(
             }
         }
     }
+    selectedMessage?.let { messageForActions ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedMessage = null },
+            sheetState = messageActionSheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 0.dp,
+            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)) }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding()
+                    .padding(horizontal = 18.dp).padding(bottom = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Действия с сообщением",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    messageForActions.content.ifBlank { "Сообщение с вложением" },
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (messageForActions.content.isNotBlank()) {
+                    MessageActionOption(
+                        icon = Icons.Filled.ContentCopy,
+                        title = "Копировать текст",
+                        description = "Скопировать содержимое сообщения"
+                    ) {
+                        scope.launch {
+                            messageActionSheetState.hide()
+                            selectedMessage = null
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("Aidroid message", messageForActions.content)
+                            )
+                            showNotice("Сообщение скопировано")
+                        }
+                    }
+                }
+                MessageActionOption(
+                    icon = Icons.Filled.DeleteOutline,
+                    title = "Удалить сообщение",
+                    description = "Удалить сообщение и его вложения",
+                    destructive = true
+                ) {
+                    scope.launch {
+                        messageActionSheetState.hide()
+                        selectedMessage = null
+                        try {
+                            onDeleteMessage(messageForActions)
+                            showNotice("Сообщение удалено")
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            attachmentError = "Не удалось удалить сообщение: ${error.message ?: "ошибка хранилища"}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (showRename) {
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
@@ -1453,7 +1502,7 @@ private fun AttachmentChoiceRow(
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(19.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
+            .background(if (MaterialTheme.colorScheme.background.red < 0.2f) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f) else MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f), RoundedCornerShape(19.dp))
             .pressScaleClickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -1470,6 +1519,44 @@ private fun AttachmentChoiceRow(
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MessageActionOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    val tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier.size(42.dp).clip(CircleShape).background(tint.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                title,
+                color = if (destructive) tint else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1551,7 +1638,7 @@ private fun PendingAttachmentChip(attachment: StoredAttachment, onRemove: () -> 
     Row(
         Modifier.widthIn(max = 210.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f))
+            .background(if (MaterialTheme.colorScheme.background.red < 0.2f) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f) else MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
             .padding(start = 9.dp, end = 3.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1598,7 +1685,7 @@ private fun StoredAttachmentCard(attachment: StoredAttachment, onClick: () -> Un
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(15.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
+            .background(if (MaterialTheme.colorScheme.background.red < 0.2f) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f) else MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(15.dp))
             .pressScaleClickable(onClick = onClick)
             .padding(8.dp),
