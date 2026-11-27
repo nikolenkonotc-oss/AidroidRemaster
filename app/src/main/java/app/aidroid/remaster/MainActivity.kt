@@ -1207,10 +1207,7 @@ private fun ConversationScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
-                        items(
-                            items = loadedMessagesState,
-                            key = { it.id }
-                        ) { message ->
+                        items(loadedMessagesState, key = { it.id }) { message ->
                             val isUser = message.role == "user"
                             val attachments = AttachmentJson.decode(message.attachmentsJson)
                             val messageContent: @Composable ColumnScope.() -> Unit = {
@@ -1299,11 +1296,6 @@ private fun ConversationScreen(
                             }
                         }
                     }
-                }
-            }
-        }
-
-
                 }
             }
         }
