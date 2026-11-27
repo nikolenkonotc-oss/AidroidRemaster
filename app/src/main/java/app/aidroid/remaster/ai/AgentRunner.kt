@@ -2,7 +2,9 @@ package app.aidroid.remaster.ai
 
 import app.aidroid.remaster.data.ChatRepository
 import app.aidroid.remaster.data.local.ChatDao
-import kotlinx.serialization.json.buildJsonObject
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class AgentRunResult(
     val success: Boolean,
@@ -15,7 +17,12 @@ class AgentRunner(
     private val chatRepository: ChatRepository,
     private val providerClient: ProviderHttpClient = ProviderHttpClient()
 ) {
-    suspend fun respondToChat(chatId: Long): AgentRunResult {
+    private val chatLocks = ConcurrentHashMap<Long, Mutex>()
+
+    suspend fun respondToChat(chatId: Long): AgentRunResult =
+        chatLocks.computeIfAbsent(chatId) { Mutex() }.withLock { executeResponse(chatId) }
+
+    private suspend fun executeResponse(chatId: Long): AgentRunResult {
         return try {
             val config = providers.activeProvider()
                 ?: return saveResult(
