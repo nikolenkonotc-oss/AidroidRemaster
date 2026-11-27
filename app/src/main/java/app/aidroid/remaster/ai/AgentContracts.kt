@@ -43,8 +43,6 @@ data class AgentPreferences(
         "file_analysis",
         "image_generation",
         "code_execution",
-        "email_draft",
-        "calendar_event",
         "voice_input",
         "voice_output"
     ),
@@ -100,8 +98,6 @@ data class AvailableModel(
 )
 
 enum class AgentActionType {
-    EMAIL_DRAFT,
-    CALENDAR_EVENT,
     CODE_EXECUTION
 }
 
@@ -110,12 +106,9 @@ data class AgentExternalAction(
     val chatId: Long,
     val type: AgentActionType,
     val title: String,
-    val recipient: String = "",
     val subject: String = "",
     val body: String = "",
-    val startIso: String = "",
-    val endIso: String = "",
-    val location: String = ""
+    val stdin: String = ""
 )
 
 data class AgentToolResult(

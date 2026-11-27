@@ -1,10 +1,6 @@
 package app.aidroid.remaster.ai
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.provider.CalendarContract
-import android.util.Patterns
 import app.aidroid.remaster.data.attachments.AttachmentStorage
 import app.aidroid.remaster.data.attachments.StoredAttachment
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +12,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
-import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -55,8 +50,6 @@ class AgentToolExecutor(
             if ("code_execution" in enabled && preferences.codeRunnerUrl.isNotBlank()) {
                 add(codeExecutionTool())
             }
-            if ("email_draft" in enabled) add(emailDraftTool())
-            if ("calendar_event" in enabled) add(calendarEventTool())
         }
     }
 
@@ -73,16 +66,13 @@ class AgentToolExecutor(
             "generate_image" -> generateImage(arguments)
             "edit_image" -> editImage(arguments, latestUserImages)
             "run_code" -> requestCodeExecution(arguments, chatId)
-            "draft_email" -> requestEmailDraft(arguments, chatId)
-            "create_calendar_event" -> requestCalendarEvent(arguments, chatId)
             else -> throw IllegalArgumentException("Инструмент '$name' не зарегистрирован.")
         }
     }
 
-    suspend fun confirmAction(action: AgentExternalAction): AgentToolResult = when (action.type) {
-        AgentActionType.CODE_EXECUTION -> executeCode(action)
-        AgentActionType.EMAIL_DRAFT -> openEmailDraft(action)
-        AgentActionType.CALENDAR_EVENT -> openCalendarDraft(action)
+    suspend fun confirmAction(action: AgentExternalAction): AgentToolResult {
+        require(action.type == AgentActionType.CODE_EXECUTION) { "Неизвестный тип подтверждаемого действия." }
+        return executeCode(action)
     }
 
     private suspend fun searchWeb(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
@@ -173,7 +163,7 @@ class AgentToolExecutor(
         AgentToolResult(output.take(MAX_TOOL_RESULT_CHARS))
     }
 
-    private suspend fun generateImage(arguments: JsonObject): AgentToolResult {
+    private suspend fun generateImage(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
         val prompt = arguments.string("prompt")
         require(prompt.isNotBlank() && prompt.length <= 4000) { "Описание изображения должно содержать от 1 до 4000 символов." }
         val provider = imageProvider() ?: throw IllegalStateException(
@@ -194,7 +184,7 @@ class AgentToolExecutor(
             ?: throw IllegalStateException("API генерации не вернул изображение.")
         val imageBytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
         val attachment = attachmentStorage.saveGeneratedImage(imageBytes, "aidroid_generated")
-        return AgentToolResult(
+        AgentToolResult(
             text = "Изображение создано и добавлено к ответу. Его можно открыть прямо в чате.",
             attachments = listOf(attachment)
         )
@@ -203,7 +193,7 @@ class AgentToolExecutor(
     private suspend fun editImage(
         arguments: JsonObject,
         latestUserImages: List<LlmImageAttachment>
-    ): AgentToolResult {
+    ): AgentToolResult = withContext(Dispatchers.IO) {
         require(latestUserImages.isNotEmpty()) { "Для редактирования сначала прикрепи изображение к сообщению." }
         val prompt = arguments.string("prompt")
         require(prompt.isNotBlank() && prompt.length <= 4000) { "Описание правки должно содержать от 1 до 4000 символов." }
@@ -231,7 +221,7 @@ class AgentToolExecutor(
             ?: throw IllegalStateException("API редактирования не вернул изображение.")
         val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
         val attachment = attachmentStorage.saveGeneratedImage(bytes, "aidroid_edited")
-        return AgentToolResult(
+        AgentToolResult(
             text = "Изображение отредактировано. Новая версия прикреплена к ответу; исходник не изменён.",
             attachments = listOf(attachment)
         )
@@ -253,7 +243,7 @@ class AgentToolExecutor(
                 title = "Запустить код в изолированной среде?",
                 subject = language,
                 body = code,
-                recipient = stdin
+                stdin = stdin
             )
         )
     }
@@ -285,7 +275,7 @@ class AgentToolExecutor(
                     put("content", action.body)
                 })
             })
-            put("stdin", action.recipient.take(2000))
+            put("stdin", action.stdin.take(2000))
             put("compile_timeout", 5000)
             put("run_timeout", 3000)
             put("compile_memory_limit", 128 * 1024 * 1024)
@@ -304,83 +294,6 @@ class AgentToolExecutor(
             if (stdout.isBlank() && stderr.isBlank()) append("Программа завершилась без вывода.")
         }
         AgentToolResult(output.take(MAX_TOOL_RESULT_CHARS))
-    }
-
-    private fun requestEmailDraft(arguments: JsonObject, chatId: Long): AgentToolResult {
-        val recipient = arguments.stringOrNull("recipient").orEmpty().trim()
-        require(recipient.isBlank() || Patterns.EMAIL_ADDRESS.matcher(recipient).matches()) {
-            "Проверь адрес электронной почты."
-        }
-        val subject = arguments.string("subject").take(180)
-        val body = arguments.string("body").take(8000)
-        require(subject.isNotBlank() || body.isNotBlank()) { "Черновик письма пуст." }
-        return AgentToolResult(
-            "Нужно подтвердить открытие почтового приложения с подготовленным черновиком.",
-            action = AgentExternalAction(
-                id = UUID.randomUUID().toString(),
-                chatId = chatId,
-                type = AgentActionType.EMAIL_DRAFT,
-                title = "Открыть черновик письма?",
-                recipient = recipient,
-                subject = subject,
-                body = body
-            )
-        )
-    }
-
-    private fun requestCalendarEvent(arguments: JsonObject, chatId: Long): AgentToolResult {
-        val title = arguments.string("title").trim().take(180)
-        val start = arguments.string("start_iso")
-        val end = arguments.string("end_iso")
-        require(title.isNotBlank()) { "Укажи название события." }
-        val startTime = runCatching { OffsetDateTime.parse(start) }.getOrElse {
-            throw IllegalArgumentException("Начало события должно быть ISO-датой со смещением часового пояса.")
-        }
-        val endTime = runCatching { OffsetDateTime.parse(end) }.getOrElse {
-            throw IllegalArgumentException("Окончание события должно быть ISO-датой со смещением часового пояса.")
-        }
-        require(endTime.isAfter(startTime)) { "Окончание события должно быть позже начала." }
-        return AgentToolResult(
-            "Нужно подтвердить открытие календаря с подготовленным событием.",
-            action = AgentExternalAction(
-                id = UUID.randomUUID().toString(),
-                chatId = chatId,
-                type = AgentActionType.CALENDAR_EVENT,
-                title = "Добавить событие в календарь?",
-                subject = title,
-                body = arguments.stringOrNull("notes").orEmpty().take(3000),
-                startIso = startTime.toString(),
-                endIso = endTime.toString(),
-                location = arguments.stringOrNull("location").orEmpty().take(250)
-            )
-        )
-    }
-
-    private suspend fun openEmailDraft(action: AgentExternalAction): AgentToolResult = withContext(Dispatchers.Main) {
-        val uri = Uri.fromParts("mailto", action.recipient, null)
-        val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
-            putExtra(Intent.EXTRA_SUBJECT, action.subject)
-            putExtra(Intent.EXTRA_TEXT, action.body)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        appContext.startActivity(intent)
-        AgentToolResult("Почтовое приложение открыло черновик. Письмо не отправлено — проверь текст и отправь его самостоятельно.")
-    }
-
-    private suspend fun openCalendarDraft(action: AgentExternalAction): AgentToolResult = withContext(Dispatchers.Main) {
-        val begin = OffsetDateTime.parse(action.startIso).toInstant().toEpochMilli()
-        val end = OffsetDateTime.parse(action.endIso).toInstant().toEpochMilli()
-        val intent = Intent(Intent.ACTION_INSERT).apply {
-            data = CalendarContract.Events.CONTENT_URI
-            putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
-            putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
-            putExtra(CalendarContract.Events.TITLE, action.subject)
-            putExtra(CalendarContract.Events.DESCRIPTION, action.body)
-            putExtra(CalendarContract.Events.EVENT_LOCATION, action.location)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        appContext.startActivity(intent)
-        AgentToolResult("Календарь открыл форму нового события. Событие ещё не сохранено — проверь данные и подтверди сохранение в календаре.")
     }
 
     private fun webSearchTool() = LlmTool(
@@ -456,40 +369,6 @@ class AgentToolExecutor(
                 putJsonObject("stdin") { put("type", "string"); put("description", "Необязательный стандартный ввод") }
             }
             putJsonArray("required") { add(JsonPrimitive("language")); add(JsonPrimitive("code")) }
-            put("additionalProperties", false)
-        }
-    )
-
-    private fun emailDraftTool() = LlmTool(
-        name = "draft_email",
-        description = "Подготавливает черновик письма. После отдельного подтверждения открывает приложение почты; ничего не отправляет.",
-        parameters = buildJsonObject {
-            put("type", "object")
-            putJsonObject("properties") {
-                putJsonObject("recipient") { put("type", "string"); put("description", "Email получателя, если известен") }
-                putJsonObject("subject") { put("type", "string") }
-                putJsonObject("body") { put("type", "string") }
-            }
-            putJsonArray("required") { add(JsonPrimitive("subject")); add(JsonPrimitive("body")) }
-            put("additionalProperties", false)
-        }
-    )
-
-    private fun calendarEventTool() = LlmTool(
-        name = "create_calendar_event",
-        description = "Готовит событие календаря. После отдельного подтверждения открывает системную форму; событие не сохраняется автоматически.",
-        parameters = buildJsonObject {
-            put("type", "object")
-            putJsonObject("properties") {
-                putJsonObject("title") { put("type", "string") }
-                putJsonObject("start_iso") { put("type", "string"); put("description", "Дата и время с часовым смещением ISO 8601") }
-                putJsonObject("end_iso") { put("type", "string"); put("description", "Дата и время с часовым смещением ISO 8601") }
-                putJsonObject("location") { put("type", "string") }
-                putJsonObject("notes") { put("type", "string") }
-            }
-            putJsonArray("required") {
-                add(JsonPrimitive("title")); add(JsonPrimitive("start_iso")); add(JsonPrimitive("end_iso"))
-            }
             put("additionalProperties", false)
         }
     )

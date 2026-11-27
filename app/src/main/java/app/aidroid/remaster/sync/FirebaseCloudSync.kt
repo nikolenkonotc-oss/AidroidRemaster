@@ -230,7 +230,7 @@ class FirebaseCloudSync(context: Context) {
             role = document.getString("role") ?: "user",
             content = document.getString("content").orEmpty(),
             createdAt = document.getLong("createdAt") ?: System.currentTimeMillis(),
-            attachmentsJson = "[]",
+            attachmentsJson = current?.attachmentsJson ?: "[]",
             syncId = document.id,
             deletedAt = document.getLong("deletedAt")
         )

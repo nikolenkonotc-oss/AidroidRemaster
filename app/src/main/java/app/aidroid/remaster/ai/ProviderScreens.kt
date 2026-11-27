@@ -491,20 +491,6 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
-                    title = "Черновики электронной почты",
-                    description = "Открывать подготовленный черновик в выбранном почтовом приложении",
-                    checked = "email_draft" in preferences.enabledTools,
-                    onChecked = { toggleTool("email_draft", it) }
-                )
-                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                ToolPreferenceRow(
-                    title = "События календаря",
-                    description = "Открывать форму нового события в системном календаре",
-                    checked = "calendar_event" in preferences.enabledTools,
-                    onChecked = { toggleTool("calendar_event", it) }
-                )
-                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                ToolPreferenceRow(
                     title = "Голосовой ввод",
                     description = "Кнопка микрофона в поле сообщения",
                     checked = "voice_input" in preferences.enabledTools,
@@ -518,7 +504,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Каждый вызов проверяется приложением. Базовый веб-поиск не требует ключей и регистрации. Запуск кода и внешние действия требуют подтверждения.",
+                    "Каждый вызов проверяется приложением. Базовый веб-поиск не требует ключей и регистрации. Запуск кода требует отдельного подтверждения.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )

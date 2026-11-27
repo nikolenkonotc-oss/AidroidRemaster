@@ -510,11 +510,7 @@ private fun AgentActionApprovalDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    val confirmLabel = when (action.type) {
-        AgentActionType.CODE_EXECUTION -> "Запустить код"
-        AgentActionType.EMAIL_DRAFT -> "Открыть почту"
-        AgentActionType.CALENDAR_EVENT -> "Открыть календарь"
-    }
+    val confirmLabel = "Запустить код"
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(action.title, fontWeight = FontWeight.Bold) },
@@ -523,46 +519,22 @@ private fun AgentActionApprovalDialog(
                 Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                when (action.type) {
-                    AgentActionType.CODE_EXECUTION -> {
-                        Text("Язык: ${action.subject.uppercase(Locale.getDefault())}")
-                        Text("Код будет отправлен только на настроенный сервер Piston после твоего подтверждения.")
-                        SelectionContainer {
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    action.body,
-                                    modifier = Modifier.padding(12.dp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                )
-                            }
+                if (action.type == AgentActionType.CODE_EXECUTION) {
+                    Text("Язык: ${action.subject.uppercase(Locale.getDefault())}")
+                    Text("Код будет отправлен только на настроенный сервер Piston после твоего подтверждения.")
+                    SelectionContainer {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                action.body,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
                         }
-                    }
-                    AgentActionType.EMAIL_DRAFT -> {
-                        if (action.recipient.isNotBlank()) Text("Кому: ${action.recipient}")
-                        Text("Тема: ${action.subject}", fontWeight = FontWeight.SemiBold)
-                        Text(action.body)
-                        Text(
-                            "Aidroid откроет почтовое приложение с черновиком. Письмо не отправляется автоматически.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    AgentActionType.CALENDAR_EVENT -> {
-                        Text(action.subject, fontWeight = FontWeight.SemiBold)
-                        Text("Начало: ${action.startIso}")
-                        Text("Окончание: ${action.endIso}")
-                        if (action.location.isNotBlank()) Text("Место: ${action.location}")
-                        if (action.body.isNotBlank()) Text(action.body)
-                        Text(
-                            "Aidroid откроет системную форму события. Запись в календарь произойдёт только после отдельного сохранения в нём.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall
-                        )
                     }
                 }
                 Text(

@@ -93,11 +93,16 @@ class ProviderManager(context: Context) {
         saveAgentPreferences(current.copy(activeProviderId = providerId))
     }
 
-    fun agentPreferences(): AgentPreferences = runCatching {
-        json.decodeFromString<AgentPreferences>(
-            preferences.getString(KEY_AGENT_PREFERENCES, "{}") ?: "{}"
+    fun agentPreferences(): AgentPreferences {
+        val stored = runCatching {
+            json.decodeFromString<AgentPreferences>(
+                preferences.getString(KEY_AGENT_PREFERENCES, "{}") ?: "{}"
+            )
+        }.getOrDefault(AgentPreferences(activeProviderId = activeProviderId()))
+        return stored.copy(
+            enabledTools = stored.enabledTools.filterNot { it == "email_draft" || it == "calendar_event" }
         )
-    }.getOrDefault(AgentPreferences(activeProviderId = activeProviderId()))
+    }
 
     fun saveAgentPreferences(value: AgentPreferences) {
         preferences.edit()
