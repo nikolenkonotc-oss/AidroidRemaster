@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, develop, fix/compose-ui-root-causes ]
+    branches: [ main, develop, fix/compose-ui-root-causes, feature/agent-provider-system ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
