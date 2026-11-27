@@ -490,7 +490,7 @@ class ProviderHttpClient {
                 putJsonObject("function") {
                     put("name", tool.name)
                     put("description", tool.description)
-                    put("parameters", tool.parameters)
+                    put("parameters", ToolSchemaNormalizer.forStrictFunction(tool.parameters))
                 }
             })
         }
@@ -526,7 +526,7 @@ class ProviderHttpClient {
                     add(buildJsonObject {
                         put("name", tool.name)
                         put("description", tool.description)
-                        put("parameters", tool.parameters)
+                        put("parameters", ToolSchemaNormalizer.forStrictFunction(tool.parameters))
                     })
                 }
             }

@@ -23,6 +23,11 @@ data class AgentRunResult(
     val message: String
 )
 
+private data class PreparedAgentMessage(
+    val message: LlmMessage,
+    val editableImages: List<LlmImageAttachment>
+)
+
 class AgentRunner(
     context: Context,
     private val providers: ProviderManager,
@@ -81,8 +86,8 @@ class AgentRunner(
             var latestUserImages = emptyList<LlmImageAttachment>()
             savedMessages.takeLast(MAX_CONTEXT_MESSAGES).forEach { message ->
                 val prepared = prepareMessage(message, preferences)
-                history += prepared
-                if (message.role == "user") latestUserImages = prepared.images
+                history += prepared.message
+                if (message.role == "user") latestUserImages = prepared.editableImages
             }
 
             val generatedAttachments = mutableListOf<StoredAttachment>()
@@ -165,9 +170,9 @@ class AgentRunner(
     private suspend fun prepareMessage(
         message: MessageEntity,
         preferences: AgentPreferences
-    ): LlmMessage {
+    ): PreparedAgentMessage {
         val attachments = AttachmentJson.decode(message.attachmentsJson)
-        if (attachments.isEmpty()) return LlmMessage(message.role, message.content)
+        if (attachments.isEmpty()) return PreparedAgentMessage(LlmMessage(message.role, message.content), emptyList())
         val images = mutableListOf<LlmImageAttachment>()
         val extractedDocuments = mutableListOf<String>()
         val skipped = mutableListOf<String>()
@@ -175,7 +180,7 @@ class AgentRunner(
 
         attachments.forEach { attachment ->
             when {
-                attachment.mimeType.startsWith("image/") && "image_analysis" in preferences.enabledTools -> {
+                attachment.mimeType.startsWith("image/") && ("image_analysis" in preferences.enabledTools || "image_generation" in preferences.enabledTools) -> {
                     if (images.size >= MAX_IMAGES_PER_MESSAGE) {
                         skipped += "${attachment.displayName}: превышен лимит изображений"
                     } else {
@@ -227,7 +232,11 @@ class AgentRunner(
                 append(skipped.joinToString("\n").take(1600))
             }
         }
-        return LlmMessage(message.role, content, images = images)
+        val modelImages = if ("image_analysis" in preferences.enabledTools) images else emptyList()
+        return PreparedAgentMessage(
+            message = LlmMessage(message.role, content, images = modelImages),
+            editableImages = images
+        )
     }
 
     private suspend fun awaitUserApproval(action: AgentExternalAction): Boolean {

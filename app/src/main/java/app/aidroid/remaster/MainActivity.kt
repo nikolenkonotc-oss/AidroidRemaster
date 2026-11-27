@@ -1940,6 +1940,7 @@ private fun ConversationScreen(
                                         }
                                         .clip(RoundedCornerShape(21.dp))
                                         .combinedClickable(
+                                            interactionSource = null,
                                             indication = null,
                                             onClick = {},
                                             onLongClickLabel = "Действия с сообщением",
@@ -2007,8 +2008,9 @@ private fun ConversationScreen(
                             }
                         }
                     }
-                    AnimatedVisibility(
-                        visible = loadedMessagesState.isNotEmpty() && !isAtBottom,
+                    Box(Modifier.fillMaxSize()) {
+                        AnimatedVisibility(
+                            visible = loadedMessagesState.isNotEmpty() && !isAtBottom,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                         enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.82f, animationSpec = tween(180)),
                         exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.88f, animationSpec = tween(140)),
@@ -2040,6 +2042,7 @@ private fun ConversationScreen(
                                 )
                             }
                         }
+                    }
                     }
             Box(
                 Modifier.align(Alignment.BottomCenter)

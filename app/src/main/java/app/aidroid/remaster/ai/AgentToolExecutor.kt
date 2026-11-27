@@ -305,10 +305,14 @@ class AgentToolExecutor(
                 putJsonObject("query") { put("type", "string"); put("description", "Что нужно найти в интернете") }
                 putJsonObject("freshness") {
                     put("type", "string")
+                    put("description", "Временной диапазон; укажи any, если фильтр не нужен")
                     putJsonArray("enum") { listOf("any", "day", "week", "month", "year").forEach { add(JsonPrimitive(it)) } }
                 }
             }
-            putJsonArray("required") { add(JsonPrimitive("query")) }
+            putJsonArray("required") {
+                add(JsonPrimitive("query"))
+                add(JsonPrimitive("freshness"))
+            }
             put("additionalProperties", false)
         }
     )
