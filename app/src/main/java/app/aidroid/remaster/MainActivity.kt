@@ -142,7 +142,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AidroidApp(repository: ChatRepository) {
-    var darkTheme by rememberSaveable { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val themePreferences = remember(context) {
+        context.getSharedPreferences("aidroid_remaster_preferences", Context.MODE_PRIVATE)
+    }
+    var darkTheme by rememberSaveable {
+        mutableStateOf(themePreferences.getBoolean("dark_theme", true))
+    }
+    LaunchedEffect(darkTheme, themePreferences) {
+        themePreferences.edit().putBoolean("dark_theme", darkTheme).apply()
+    }
     var selectedScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var selectedChatId by rememberSaveable { mutableStateOf<Long?>(null) }
 
@@ -445,7 +454,7 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
                         Modifier.size(190.dp).align(Alignment.TopEnd).graphicsLayer { rotationZ = shimmer * 16f }
                             .background(
                                 Brush.radialGradient(
-                                    listOf(if (dark) Color(0xFF9E7AF4).copy(alpha = 0.30f) else Color(0xFFB6A1F0).copy(alpha = 0.34f), Color.Transparent),
+                                    listOf(if (dark) Color(0xFF9E7AF4).copy(alpha = 0.30f) else Color(0xFF8F77C9).copy(alpha = 0.12f), Color.Transparent),
                                     radius = 260f
                                 ), CircleShape
                             )
@@ -495,7 +504,7 @@ private fun GlowButton(text: String, onClick: () -> Unit) {
     val buttonBrush = if (dark) {
         Brush.linearGradient(listOf(Color(0xFFC2A7FF), Violet, Color(0xFF4A78B9)))
     } else {
-        Brush.linearGradient(listOf(Color(0xFF426D7C), Color(0xFF31576F), Color(0xFF397783)))
+        Brush.linearGradient(listOf(Color(0xFF557E8C), Color(0xFF3D6776), Color(0xFF477E8D)))
     }
     Box(
         Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
@@ -1275,7 +1284,7 @@ private fun ConversationScreen(
                                 }
                             }
                             val isNewMessage = knownMessageIds?.contains(message.id) == false
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = !isNewMessage,
                                 enter = fadeIn(tween(190)) +
                                     slideInVertically(tween(270, easing = FastOutSlowInEasing)) { it / 3 } +
@@ -1370,8 +1379,6 @@ private fun ConversationScreen(
                             }
                         }
                     }
-                }
-            }
             Box(
                 Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -1423,6 +1430,9 @@ private fun ConversationScreen(
                 }
                 }
             }
+                }
+            }
+
 
         }
 
