@@ -22,9 +22,9 @@ class ChatRepository(
 
     suspend fun createChat(): Long {
         val now = System.currentTimeMillis()
-        val id = dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
-        syncCloudSafely()
-        return id
+        // Persist locally and return immediately. The UI starts cloud sync separately
+        // after switching to the new conversation so Firestore latency cannot stall navigation.
+        return dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
     }
 
     suspend fun sendUserMessage(chatId: Long, text: String, attachments: List<StoredAttachment> = emptyList()) {
