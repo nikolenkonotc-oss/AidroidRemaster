@@ -230,9 +230,11 @@ class AgentToolExecutor(
             "Для редактирования добавь подключение OpenAI с действующим API-ключом."
         )
         val apiKey = providers.apiKey(provider.id) ?: error("Не найден API-ключ OpenAI.")
+        val imageModel = providers.agentPreferences().imageEditModel.trim()
+            .ifBlank { "gpt-image-2.6-sunburst" }
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("model", "gpt-image-2.5-sunburst")
+            .addFormDataPart("model", imageModel)
             .addFormDataPart("prompt", prompt)
             .addFormDataPart("size", "auto")
             .addFormDataPart("quality", "medium")
