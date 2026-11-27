@@ -2,42 +2,47 @@ package app.aidroid.remaster.auth
 
 import android.app.Activity
 import android.content.Context
-import android.content.MutableContextWrapper
-import android.util.Base64
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import app.aidroid.remaster.R
-import java.security.SecureRandom
 
 data class GoogleAccountData(
     val displayName: String,
     val email: String,
-    val photoUrl: String?
+    val photoUrl: String?,
+    val idToken: String
 )
 
 class GoogleAuthClient(context: Context) {
     private val appContext = context.applicationContext
     private val credentialManager = CredentialManager.create(appContext)
 
+    val isConfigured: Boolean
+        get() = appContext.getString(R.string.google_web_client_id).trim()
+            .endsWith(".apps.googleusercontent.com")
+
     suspend fun signIn(activity: Activity): GoogleAccountData {
         val webClientId = appContext.getString(R.string.google_web_client_id).trim()
         require(webClientId.endsWith(".apps.googleusercontent.com")) {
-            "Google-вход ещё не настроен. Добавь Web Client ID в strings.xml по инструкции docs/GOOGLE_AUTH_SETUP.md."
+            "Google-вход не настроен. Добавь Web Client ID в strings.xml по инструкции docs/GOOGLE_AUTH_SETUP.md."
         }
 
-        val option = GetSignInWithGoogleOption.Builder(webClientId)
-            .setNonce(createSecureNonce())
+        // Show all Google accounts on the device and require an explicit account choice.
+        val option = GetGoogleIdOption.Builder()
+            .setServerClientId(webClientId)
+            .setFilterByAuthorizedAccounts(false)
+            .setAutoSelectEnabled(false)
             .build()
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(option)
             .build()
 
         val response = credentialManager.getCredential(
-            context = MutableContextWrapper(activity),
+            context = activity,
             request = request
         )
         val credential = response.credential
@@ -50,25 +55,20 @@ class GoogleAuthClient(context: Context) {
 
         val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
         val email = googleCredential.id.orEmpty()
+        val idToken = googleCredential.idToken
+        require(idToken.isNotBlank()) { "Google не вернул токен авторизации." }
+
         return GoogleAccountData(
             displayName = googleCredential.displayName?.takeIf { it.isNotBlank() }
                 ?: googleCredential.givenName?.takeIf { it.isNotBlank() }
                 ?: email.substringBefore("@").ifBlank { "Пользователь" },
             email = email,
-            photoUrl = googleCredential.profilePictureUri?.toString()
+            photoUrl = googleCredential.profilePictureUri?.toString(),
+            idToken = idToken
         )
     }
 
     suspend fun signOut() {
         credentialManager.clearCredentialState(ClearCredentialStateRequest())
-    }
-
-    private fun createSecureNonce(): String {
-        val bytes = ByteArray(32)
-        SecureRandom().nextBytes(bytes)
-        return Base64.encodeToString(
-            bytes,
-            Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
-        )
     }
 }
