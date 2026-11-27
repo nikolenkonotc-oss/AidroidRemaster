@@ -1247,7 +1247,7 @@ private fun ConversationScreen(
                     }
 
                     if (loadedMessagesState.isEmpty()) {
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             modifier = Modifier.fillMaxSize(),
                             visible = true,
                             enter = fadeIn(tween(300)) +
