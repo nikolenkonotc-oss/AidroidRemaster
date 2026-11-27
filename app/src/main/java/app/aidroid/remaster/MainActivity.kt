@@ -305,8 +305,16 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
                         modifier = Modifier.fillMaxSize(),
                         targetState = selectedScreen,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
-                                .togetherWith(fadeOut(animationSpec = tween(150, easing = FastOutSlowInEasing)))
+                            (slideInHorizontally(
+                                initialOffsetX = { fullWidth -> fullWidth / 18 },
+                                animationSpec = tween(240, easing = FastOutSlowInEasing)
+                            ) + fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)))
+                                .togetherWith(
+                                    slideOutHorizontally(
+                                        targetOffsetX = { fullWidth -> -fullWidth / 24 },
+                                        animationSpec = tween(170, easing = FastOutSlowInEasing)
+                                    ) + fadeOut(animationSpec = tween(170, easing = FastOutSlowInEasing))
+                                )
                         },
                         label = "main-screen"
                     ) { screen ->
@@ -329,109 +337,140 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
                                 Icons.Filled.Storage
                             )
                             Screen.SETTINGS -> {
-                                if (accountPageOpen) {
-                                    AccountScreen(
-                                        profile = accountProfile,
-                                        googleLoading = googleSignInLoading,
-                                        googleReady = googleAuthClient.isConfigured && cloudSync.isConfigured,
-                                        syncLoading = syncLoading,
-                                        syncStatus = syncStatus,
-                                        errorMessage = accountError,
-                                        onSyncNow = {
-                                            coroutineScope.launch {
-                                                syncLoading = true
-                                                syncStatus = null
-                                                try {
-                                                    accountProfile = cloudSync.syncProfile(accountProfile)
-                                                    repository.syncNow()
-                                                    syncStatus = "Синхронизация завершена"
-                                                } catch (error: Exception) {
-                                                    syncStatus = error.message ?: "Не удалось синхронизировать данные."
-                                                } finally {
-                                                    syncLoading = false
-                                                }
-                                            }
-                                        },
-                                        onBack = {
-                                            accountPageOpen = false
-                                            accountError = null
-                                        },
-                                        onProfileChange = { accountProfile = it },
-                                        onLocalContinue = {
-                                            accountProfile = accountProfile.copy(
-                                                accountType = "local",
-                                                displayName = accountProfile.displayName.ifBlank { "Пользователь" },
-                                                username = accountProfile.username.ifBlank { "user" }
-                                            )
-                                            accountError = null
-                                            syncStatus = null
-                                        },
-                                        onGoogleSignIn = {
-                                            val activity = context.findActivity()
-                                            if (activity == null) {
-                                                accountError = "Не удалось открыть окно входа. Перезапусти приложение и попробуй снова."
-                                            } else {
+                                AnimatedContent(
+                                    targetState = accountPageOpen,
+                                    transitionSpec = {
+                                        if (targetState) {
+                                            (slideInHorizontally(
+                                                initialOffsetX = { fullWidth -> fullWidth / 10 },
+                                                animationSpec = tween(260, easing = FastOutSlowInEasing)
+                                            ) + fadeIn(tween(260, easing = FastOutSlowInEasing)) +
+                                                scaleIn(initialScale = 0.985f, animationSpec = tween(260, easing = FastOutSlowInEasing)))
+                                                .togetherWith(
+                                                    slideOutHorizontally(
+                                                        targetOffsetX = { fullWidth -> -fullWidth / 18 },
+                                                        animationSpec = tween(170, easing = FastOutSlowInEasing)
+                                                    ) + fadeOut(tween(170, easing = FastOutSlowInEasing))
+                                                )
+                                        } else {
+                                            (slideInHorizontally(
+                                                initialOffsetX = { fullWidth -> -fullWidth / 18 },
+                                                animationSpec = tween(240, easing = FastOutSlowInEasing)
+                                            ) + fadeIn(tween(240, easing = FastOutSlowInEasing)))
+                                                .togetherWith(
+                                                    slideOutHorizontally(
+                                                        targetOffsetX = { fullWidth -> fullWidth / 10 },
+                                                        animationSpec = tween(170, easing = FastOutSlowInEasing)
+                                                    ) + fadeOut(tween(170, easing = FastOutSlowInEasing))
+                                                )
+                                        }
+                                    },
+                                    label = "settings-account-navigation"
+                                ) { showAccountPage ->
+                                    if (showAccountPage) {
+                                        AccountScreen(
+                                            profile = accountProfile,
+                                            googleLoading = googleSignInLoading,
+                                            googleReady = googleAuthClient.isConfigured && cloudSync.isConfigured,
+                                            syncLoading = syncLoading,
+                                            syncStatus = syncStatus,
+                                            errorMessage = accountError,
+                                            onSyncNow = {
                                                 coroutineScope.launch {
-                                                    googleSignInLoading = true
-                                                    accountError = null
+                                                    syncLoading = true
+                                                    syncStatus = null
                                                     try {
-                                                        val google = googleAuthClient.signIn(activity)
-                                                        val cloudAccount = cloudSync.signInWithGoogle(google.idToken)
-                                                        val remoteProfile = cloudSync.loadProfile()
-                                                        val signedInProfile = remoteProfile?.copy(
-                                                            accountType = "google",
-                                                            email = cloudAccount.email.ifBlank { google.email },
-                                                            googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
-                                                        ) ?: accountProfile.copy(
-                                                            accountType = "google",
-                                                            displayName = accountProfile.displayName.ifBlank { google.displayName },
-                                                            username = accountProfile.username.ifBlank {
-                                                                google.email.substringBefore("@").replace(Regex("[^A-Za-z0-9_]"), "")
-                                                            },
-                                                            email = cloudAccount.email.ifBlank { google.email },
-                                                            googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
-                                                        )
-                                                        cloudProfileWritesEnabled = true
-                                                        accountProfile = cloudSync.syncProfile(signedInProfile)
+                                                        accountProfile = cloudSync.syncProfile(accountProfile)
                                                         repository.syncNow()
-                                                        syncStatus = "Google подключён · синхронизация завершена"
-                                                    } catch (cancelled: CancellationException) {
-                                                        throw cancelled
+                                                        syncStatus = "Синхронизация завершена"
                                                     } catch (error: Exception) {
-                                                        accountError = error.message ?: "Не удалось выполнить вход через Google."
+                                                        syncStatus = error.message ?: "Не удалось синхронизировать данные."
                                                     } finally {
-                                                        googleSignInLoading = false
+                                                        syncLoading = false
                                                     }
                                                 }
-                                            }
-                                        },
-                                        onSignOut = {
-                                            coroutineScope.launch {
-                                                if (accountProfile.accountType == "google") {
-                                                    cloudSync.signOut()
-                                                    try {
-                                                        googleAuthClient.signOut()
-                                                    } catch (error: Exception) {
-                                                        accountError = "Не удалось очистить выбор Google: ${error.message ?: "ошибка"}"
-                                                    }
-                                                }
-                                                accountStore.clear()
-                                                accountProfile = AccountProfile()
-                                                syncStatus = null
+                                            },
+                                            onBack = {
+                                                accountPageOpen = false
                                                 accountError = null
+                                            },
+                                            onProfileChange = { accountProfile = it },
+                                            onLocalContinue = {
+                                                accountProfile = accountProfile.copy(
+                                                    accountType = "local",
+                                                    displayName = accountProfile.displayName.ifBlank { "Пользователь" },
+                                                    username = accountProfile.username.ifBlank { "user" }
+                                                )
+                                                accountError = null
+                                                syncStatus = null
+                                            },
+                                            onGoogleSignIn = {
+                                                val activity = context.findActivity()
+                                                if (activity == null) {
+                                                    accountError = "Не удалось открыть окно входа. Перезапусти приложение и попробуй снова."
+                                                } else {
+                                                    coroutineScope.launch {
+                                                        googleSignInLoading = true
+                                                        accountError = null
+                                                        try {
+                                                            val google = googleAuthClient.signIn(activity)
+                                                            val cloudAccount = cloudSync.signInWithGoogle(google.idToken)
+                                                            val remoteProfile = cloudSync.loadProfile()
+                                                            val signedInProfile = remoteProfile?.copy(
+                                                                accountType = "google",
+                                                                email = cloudAccount.email.ifBlank { google.email },
+                                                                googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
+                                                            ) ?: accountProfile.copy(
+                                                                accountType = "google",
+                                                                displayName = accountProfile.displayName.ifBlank { google.displayName },
+                                                                username = accountProfile.username.ifBlank {
+                                                                    google.email.substringBefore("@").replace(Regex("[^A-Za-z0-9_]"), "")
+                                                                },
+                                                                email = cloudAccount.email.ifBlank { google.email },
+                                                                googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
+                                                            )
+                                                            cloudProfileWritesEnabled = true
+                                                            accountProfile = cloudSync.syncProfile(signedInProfile)
+                                                            repository.syncNow()
+                                                            syncStatus = "Google подключён · синхронизация завершена"
+                                                        } catch (cancelled: CancellationException) {
+                                                            throw cancelled
+                                                        } catch (error: Exception) {
+                                                            accountError = error.message ?: "Не удалось выполнить вход через Google."
+                                                        } finally {
+                                                            googleSignInLoading = false
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            onSignOut = {
+                                                coroutineScope.launch {
+                                                    if (accountProfile.accountType == "google") {
+                                                        cloudSync.signOut()
+                                                        try {
+                                                            googleAuthClient.signOut()
+                                                        } catch (error: Exception) {
+                                                            accountError = "Не удалось очистить выбор Google: ${error.message ?: "ошибка"}"
+                                                        }
+                                                    }
+                                                    accountStore.clear()
+                                                    accountProfile = AccountProfile()
+                                                    syncStatus = null
+                                                    accountError = null
+                                                }
                                             }
-                                        }
-                                    )
-                                } else {
-                                    SettingsScreen(
-                                        darkTheme = darkTheme,
-                                        onThemeChange = { darkTheme = it },
-                                        profile = accountProfile,
-                                        onOpenAccount = {
-                                            accountError = null
-                                            accountPageOpen = true
-                                        }
-                                    )
+                                        )
+                                    } else {
+                                        SettingsScreen(
+                                            darkTheme = darkTheme,
+                                            onThemeChange = { darkTheme = it },
+                                            profile = accountProfile,
+                                            onOpenAccount = {
+                                                accountError = null
+                                                accountPageOpen = true
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -815,6 +854,32 @@ private fun ChatWorkspace(
     val chats = if (showArchived) archivedChats else activeChats
     val allChats = if (chatLists == null) emptyList() else activeChats + archivedChats
     val loading = chatLists == null
+    var creatingChat by remember { mutableStateOf(false) }
+    var pendingCreatedChatId by remember { mutableStateOf<Long?>(null) }
+    var creationError by remember { mutableStateOf<String?>(null) }
+    var visibleChatId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(selectedChatId, allChats) {
+        if (selectedChatId == null) {
+            visibleChatId = null
+        } else if (allChats.any { it.id == selectedChatId }) {
+            visibleChatId = selectedChatId
+        }
+    }
+
+    LaunchedEffect(pendingCreatedChatId, selectedChatId, visibleChatId) {
+        val pendingId = pendingCreatedChatId ?: return@LaunchedEffect
+        if (selectedChatId != pendingId) {
+            pendingCreatedChatId = null
+            creatingChat = false
+        } else if (visibleChatId == pendingId) {
+            delay(420)
+            if (pendingCreatedChatId == pendingId && selectedChatId == pendingId) {
+                pendingCreatedChatId = null
+                creatingChat = false
+            }
+        }
+    }
 
     val messages by produceState<List<MessageEntity>?>(initialValue = null, key1 = selectedChatId) {
         value = null
@@ -824,10 +889,32 @@ private fun ChatWorkspace(
 
     AnimatedContent(
         modifier = Modifier.fillMaxSize(),
-        targetState = selectedChatId,
+        targetState = visibleChatId,
         transitionSpec = {
-            fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
-                .togetherWith(fadeOut(animationSpec = tween(140, easing = FastOutSlowInEasing)))
+            if (targetState != null) {
+                (slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth / 8 },
+                    animationSpec = tween(270, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(270, easing = FastOutSlowInEasing)) +
+                    scaleIn(initialScale = 0.975f, animationSpec = tween(270, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> -fullWidth / 14 },
+                            animationSpec = tween(180, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(180, easing = FastOutSlowInEasing))
+                    )
+            } else {
+                (slideInHorizontally(
+                    initialOffsetX = { fullWidth -> -fullWidth / 14 },
+                    animationSpec = tween(240, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(240, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> fullWidth / 8 },
+                            animationSpec = tween(170, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(170, easing = FastOutSlowInEasing))
+                    )
+            }
         },
         label = "chat-list-conversation-transition"
     ) { destinationChatId ->
@@ -836,12 +923,33 @@ private fun ChatWorkspace(
                 chats = chats,
                 loading = loading,
                 archived = showArchived,
+                creatingChat = creatingChat,
+                creationError = creationError,
                 onToggleArchived = { showArchived = it },
                 onCreate = {
-                    showArchived = false
-                    scope.launch {
-                        val id = repository.createChat()
-                        onSelectChat(id)
+                    if (!creatingChat) {
+                        creatingChat = true
+                        creationError = null
+                        showArchived = false
+                        scope.launch {
+                            try {
+                                val id = repository.createChat()
+                                pendingCreatedChatId = id
+                                onSelectChat(id)
+                                scope.launch {
+                                    try {
+                                        repository.syncNow()
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                pendingCreatedChatId = null
+                                creatingChat = false
+                                creationError = "Не удалось создать чат: ${error.message ?: "ошибка"}"
+                            }
+                        }
                     }
                 },
                 onOpen = { onSelectChat(it) },
@@ -890,6 +998,8 @@ private fun ChatListScreen(
     chats: List<ChatEntity>,
     loading: Boolean,
     archived: Boolean,
+    creatingChat: Boolean,
+    creationError: String?,
     onToggleArchived: (Boolean) -> Unit,
     onCreate: () -> Unit,
     onOpen: (Long) -> Unit,
@@ -941,16 +1051,32 @@ private fun ChatListScreen(
                         addShape
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
-                    .pressScaleClickable(onClick = onCreate),
+                    .pressScaleClickable(onClick = onCreate, enabled = !creatingChat),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Создать чат",
-                    tint = Color.White,
-                    modifier = Modifier.size(29.dp)
-                )
+                if (creatingChat) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.4.dp
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Создать чат",
+                        tint = Color.White,
+                        modifier = Modifier.size(29.dp)
+                    )
+                }
             }
+        }
+
+        if (!creationError.isNullOrBlank()) {
+            Text(
+                creationError,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 21) {
@@ -2297,7 +2423,8 @@ private fun PressAnimatedTextButton(
 @Composable
 private fun Modifier.pressScaleClickable(
     onClick: () -> Unit,
-    pressedScale: Float = 0.965f
+    pressedScale: Float = 0.965f,
+    enabled: Boolean = true
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -2307,7 +2434,7 @@ private fun Modifier.pressScaleClickable(
         label = "shared-press-scale"
     )
     return this.graphicsLayer { scaleX = scale; scaleY = scale }
-        .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+        .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
 }
 
 @Composable
