@@ -91,7 +91,7 @@ class WebResearchEngine {
 
         // Google News RSS is an independent, keyless feed. It is intentionally a
         // supplement for thin search results, not a replacement for general web search.
-        if (found.size < 5) {
+        if (found.size < 5 || freshness != "any") {
             runCatching { searchGoogleNews(query, freshness) }
                 .onSuccess { hits ->
                     hits.forEach { found.putIfAbsent(it.url, it) }
@@ -102,7 +102,7 @@ class WebResearchEngine {
 
         // MediaWiki's documented Action API provides a keyless encyclopedia fallback.
         // It complements news search but is not presented as a source of current events.
-        if (found.size < 5) {
+        if (found.size < 5 && freshness == "any") {
             runCatching { searchWikipedia(query) }
                 .onSuccess { hits ->
                     hits.forEach { found.putIfAbsent(it.url, it) }
