@@ -49,11 +49,12 @@ class GoogleAuthClient(context: Context) {
         }
 
         val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+        val email = googleCredential.email.orEmpty()
         return GoogleAccountData(
             displayName = googleCredential.displayName?.takeIf { it.isNotBlank() }
                 ?: googleCredential.givenName?.takeIf { it.isNotBlank() }
-                ?: googleCredential.email.substringBefore("@"),
-            email = googleCredential.email,
+                ?: email.substringBefore("@").ifBlank { "Пользователь" },
+            email = email,
             photoUrl = googleCredential.profilePictureUri?.toString()
         )
     }
