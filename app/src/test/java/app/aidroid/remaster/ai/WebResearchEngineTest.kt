@@ -20,6 +20,7 @@ class WebResearchEngineTest {
         assertEquals("Example article", result.title)
         assertEquals("https://example.com/article", result.url)
         assertEquals("A useful summary & details.", result.snippet)
+        assertEquals("DuckDuckGo", result.source)
     }
 
     @Test
@@ -32,6 +33,33 @@ class WebResearchEngineTest {
         val result = WebHtmlParser.parseMojeek(html).single()
         assertEquals("https://example.com/page", result.url)
         assertEquals("Page description", result.snippet)
+        assertEquals("Mojeek", result.source)
+    }
+
+    @Test
+    fun parsesGoogleNewsRssItemsAndCdata() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss><channel>
+              <item>
+                <title><![CDATA[GTA VI news &amp; updates]]></title>
+                <link>https://news.google.com/rss/articles/example?source=feed&amp;id=7</link>
+                <description><![CDATA[<p>Latest <b>confirmed</b> details &amp; context.</p>]]></description>
+              </item>
+              <item>
+                <title>Unsafe local result</title>
+                <link>http://127.0.0.1/private</link>
+                <description>Must be ignored</description>
+              </item>
+            </channel></rss>
+        """.trimIndent()
+
+        val result = WebHtmlParser.parseGoogleNewsRss(xml).single()
+
+        assertEquals("GTA VI news & updates", result.title)
+        assertEquals("https://news.google.com/rss/articles/example?source=feed&id=7", result.url)
+        assertEquals("Latest confirmed details & context.", result.snippet)
+        assertEquals("Google News", result.source)
     }
 
     @Test
