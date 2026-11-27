@@ -89,8 +89,9 @@ class ChatRepository(
     }
 
     private suspend fun syncCloudSafely() {
-        if (cloudSync?.isSignedIn == true) {
-            runCatching { cloudSync.syncChats(dao) }
+        val sync = cloudSync ?: return
+        if (sync.isSignedIn) {
+            runCatching { sync.syncChats(dao) }
         }
     }
 }
