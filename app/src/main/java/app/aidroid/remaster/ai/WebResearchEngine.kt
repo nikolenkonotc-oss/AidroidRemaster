@@ -263,7 +263,7 @@ class WebResearchEngine {
             "day" -> " when:1d"
             "week" -> " when:7d"
             "month" -> " when:30d"
-            "year" -> " when:365d"
+            "year" -> " when:1y"
             else -> ""
         }
         val encodedQuery = URLEncoder.encode(query + freshnessFilter, Charsets.UTF_8.name())
