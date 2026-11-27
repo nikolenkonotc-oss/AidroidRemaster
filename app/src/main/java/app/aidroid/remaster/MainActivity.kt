@@ -1564,17 +1564,17 @@ private fun ConversationScreen(
                 Row(
                     Modifier.fillMaxWidth()
                         .animateContentSize(tween(220, easing = FastOutSlowInEasing)),
-                    verticalAlignment = Alignment.Bottom,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box {
-                        PressAnimatedIconButton(
-                            onClick = { showAttachmentMenu = true },
-                            icon = Icons.Filled.AttachFile,
-                            contentDescription = "Прикрепить",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    PressAnimatedIconButton(
+                        onClick = { showAttachmentMenu = true },
+                        icon = Icons.Filled.AttachFile,
+                        contentDescription = "Прикрепить",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                        iconModifier = Modifier.size(27.dp)
+                    )
                     OutlinedTextField(
                         value = localText,
                         onValueChange = { localText = it },
