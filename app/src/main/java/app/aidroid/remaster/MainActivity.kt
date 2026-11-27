@@ -194,14 +194,8 @@ private fun AidroidApp(repository: ChatRepository) {
                     AnimatedContent(
                         targetState = selectedScreen,
                         transitionSpec = {
-                            (fadeIn(tween(280)) +
-                                slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { it / 14 } +
-                                scaleIn(initialScale = 0.985f, animationSpec = tween(320, easing = FastOutSlowInEasing)))
-                                .togetherWith(
-                                    fadeOut(tween(190)) +
-                                        slideOutHorizontally(animationSpec = tween(240, easing = FastOutSlowInEasing)) { -it / 22 } +
-                                        scaleOut(targetScale = 0.99f, animationSpec = tween(240))
-                                )
+                            fadeIn(animationSpec = tween(210, easing = FastOutSlowInEasing))
+                                .togetherWith(fadeOut(animationSpec = tween(150, easing = FastOutSlowInEasing)))
                         },
                         label = "main-screen"
                     ) { screen ->
@@ -558,8 +552,12 @@ private fun ChatWorkspace(
 ) {
     val scope = rememberCoroutineScope()
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    val chats by (if (showArchived) repository.archivedChats() else repository.activeChats())
-        .collectAsState(initial = emptyList())
+    var chats by remember { mutableStateOf<List<ChatEntity>?>(null) }
+    LaunchedEffect(showArchived) {
+        chats = null
+        val source = if (showArchived) repository.archivedChats() else repository.activeChats()
+        source.collect { result -> chats = result }
+    }
 
     // null means Room has not emitted the first result yet. This prevents the
     // empty-chat welcome card from flashing over an existing conversation.
@@ -572,20 +570,15 @@ private fun ChatWorkspace(
     AnimatedContent(
         targetState = selectedChatId,
         transitionSpec = {
-            if (targetState != null) {
-                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it / 12 } +
-                    scaleIn(initialScale = 0.985f, animationSpec = tween(320)))
-                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { -it / 18 })
-            } else {
-                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 14 })
-                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { it / 18 })
-            }
+            fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing))
+                .togetherWith(fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing)))
         },
         label = "chat-list-conversation-transition"
     ) { destinationChatId ->
         if (destinationChatId == null) {
             ChatListScreen(
-                chats = chats,
+                chats = chats.orEmpty(),
+                loading = chats == null,
                 archived = showArchived,
                 onToggleArchived = { showArchived = it },
                 onCreate = {
@@ -601,7 +594,7 @@ private fun ChatWorkspace(
                 onDelete = { chat -> scope.launch { repository.delete(chat) } }
             )
         } else {
-            val destinationChat = chats.firstOrNull { it.id == destinationChatId }
+            val destinationChat = chats?.firstOrNull { it.id == destinationChatId }
             if (destinationChat == null) {
                 ConversationLoadingState()
             } else {
@@ -638,6 +631,7 @@ private fun ConversationLoadingState() {
 @Composable
 private fun ChatListScreen(
     chats: List<ChatEntity>,
+    loading: Boolean,
     archived: Boolean,
     onToggleArchived: (Boolean) -> Unit,
     onCreate: () -> Unit,
@@ -783,8 +777,22 @@ private fun ChatListScreen(
             }
         }
 
-        if (filtered.isEmpty()) {
+        if (loading) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.5.dp
+                )
+            }
+        } else if (filtered.isEmpty()) {
+            AnimatedVisibility(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                visible = true,
+                enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.985f, animationSpec = tween(260)),
+                label = "chat-empty-state"
+            ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
@@ -836,6 +844,7 @@ private fun ChatListScreen(
                     }
                 }
             }
+            }
         } else {
             LazyColumn(
                 Modifier.weight(1f),
@@ -843,7 +852,7 @@ private fun ChatListScreen(
                 contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
             ) {
                 items(filtered, key = { it.id }) { chat ->
-                    Box(Modifier.fillMaxWidth().animateItem()) {
+                    Box(Modifier.fillMaxWidth()) {
                         ChatListItem(
                             chat,
                             onOpen = { onOpen(chat.id) },
@@ -1200,11 +1209,7 @@ private fun ConversationScreen(
                         val isUser = message.role == "user"
                         val attachments = AttachmentJson.decode(message.attachmentsJson)
                         var messageMenuExpanded by remember(message.id) { mutableStateOf(false) }
-                        var messageAnimatedIn by remember(message.id) { mutableStateOf(false) }
-                        LaunchedEffect(message.id, animatedMessageId) {
-                            if (message.id == animatedMessageId) messageAnimatedIn = true
-                        }
-                        val messageContent: @Composable ColumnScope.() -> Unit = {
+val messageContent: @Composable ColumnScope.() -> Unit = {
                             if (message.content.isNotBlank()) {
                                 MessageBodyText(message.id, message.content) { url ->
                                     runCatching { uriHandler.openUri(url) }
@@ -1278,15 +1283,15 @@ private fun ConversationScreen(
                         }
                         if (message.id == animatedMessageId) {
                             AnimatedVisibility(
-                                modifier = Modifier.fillMaxWidth().animateItem(),
-                                visible = messageAnimatedIn,
+                                modifier = Modifier.fillMaxWidth(),
+                                visible = true,
                                 enter = fadeIn(tween(260)) + slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 7 } +
                                     scaleIn(initialScale = 0.975f, animationSpec = tween(280, easing = FastOutSlowInEasing)),
                                 exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.98f, animationSpec = tween(150)),
                                 label = "new-message-${message.id}"
                             ) { messageRow(Modifier) }
                         } else {
-                            messageRow(Modifier.animateItem())
+                            messageRow(Modifier)
                         }
                     }
                 }
@@ -1708,8 +1713,8 @@ private fun PressAnimatedTextButton(
 
 @Composable
 private fun Modifier.pressScaleClickable(
-    onClick: () -> Unit,
-    pressedScale: Float = 0.965f
+    pressedScale: Float = 0.965f,
+    onClick: () -> Unit
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
