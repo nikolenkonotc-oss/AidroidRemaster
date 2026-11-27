@@ -4,9 +4,9 @@ Personal-first Android AI agent. Local-first, provider-agnostic, user-controlled
 
 ## Project status
 
-**UI + local chat persistence / milestone 0.2.0-alpha.3**
+**Aurora UI, local chat persistence and attachments / milestone 0.2.0-alpha.7**
 
-The app now includes a Compose navigation shell, Aurora-inspired light/dark themes, animated background and transitions, and local multi-chat persistence using Room. Each conversation has its own message history. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
+The app includes a Compose navigation shell, Aurora light/dark themes, animated transitions, Room-backed multi-chat history, local photo/file/camera attachments, an adaptive launcher icon, and animated message actions. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
 
 ## Decisions
 
@@ -69,3 +69,16 @@ Chat messages can now include local file, photo-picker, and camera attachments. 
 ## Alpha.6 — launcher icon and animations
 
 See `docs/ANIMATION_ICON_ALPHA6.md` for the adaptive crystal icon, conversation loading-state fix, message animations, and navigation motion updates.
+
+
+## Alpha 0.2.0-alpha.7 — UI polish
+
+- Refined Aurora Light colors and glass surfaces; removed the hard-edged hero sheen layer.
+- Replaced the attachment popup with an animated Material 3 bottom sheet.
+- Added animated inline feedback for attachment, open-file, send, and delete errors.
+- Added per-message copy and delete actions; deleting a message also removes its private attachment files.
+- Added clickable HTTP/HTTPS links and animated expand/collapse for long messages.
+- New messages animate on insertion; message deletion and list movement use lazy-item animations.
+- Send operation now keeps the draft and attachments when the database write fails.
+
+See `docs/UI_POLISH_ALPHA7.md` for details.

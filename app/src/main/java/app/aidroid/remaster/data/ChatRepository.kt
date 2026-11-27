@@ -68,5 +68,13 @@ class ChatRepository(
         }
         dao.deleteChat(chat)
     }
+
+    suspend fun deleteMessage(message: MessageEntity) {
+        dao.deleteMessage(message)
+        withContext(Dispatchers.IO) {
+            AttachmentJson.decode(message.attachmentsJson).forEach(attachmentStorage::delete)
+        }
+    }
+
     suspend fun getChat(chatId: Long): ChatEntity? = dao.getChat(chatId)
 }

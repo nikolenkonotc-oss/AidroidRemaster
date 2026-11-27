@@ -2,10 +2,12 @@ package app.aidroid.remaster
 
 import android.os.Bundle
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,6 +16,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -50,6 +55,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -70,10 +76,18 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -84,9 +98,11 @@ import app.aidroid.remaster.data.attachments.StoredAttachment
 import app.aidroid.remaster.data.local.AidroidDatabase
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -143,13 +159,14 @@ private fun AidroidApp(repository: ChatRepository) {
             primary = Color(0xFF6745C5),
             onPrimary = Color.White,
             secondary = Color(0xFF24798B),
-            background = Color(0xFFF5F2FC),
-            surface = Color(0xFFFFFEFF),
-            surfaceVariant = Color(0xFFEAE5F5),
-            onBackground = Color(0xFF211B30),
-            onSurface = Color(0xFF211B30),
-            onSurfaceVariant = Color(0xFF625B70),
-            primaryContainer = Color(0xFFE9DFFF),
+            background = Color(0xFFEDF2F8),
+            surface = Color(0xFFF9FBFF),
+            surfaceVariant = Color(0xFFE5EAF3),
+            onBackground = Color(0xFF211D2D),
+            onSurface = Color(0xFF211D2D),
+            onSurfaceVariant = Color(0xFF5F5B6C),
+            outline = Color(0xFF8B8799),
+            primaryContainer = Color(0xFFE7DFFF),
             onPrimaryContainer = Color(0xFF2C1A55)
         )
     }
@@ -272,9 +289,9 @@ private fun GlassPanel(
 ) {
     val dark = MaterialTheme.colorScheme.background.red < 0.2f
     val shape = RoundedCornerShape(cornerRadius.dp)
-    val baseTop = if (dark) Color(0xFF27253A).copy(alpha = 0.78f) else Color.White.copy(alpha = 0.82f)
-    val baseBottom = if (dark) Color(0xFF111827).copy(alpha = 0.82f) else Color(0xFFEDEBFA).copy(alpha = 0.72f)
-    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.94f)
+    val baseTop = if (dark) Color(0xFF27253A).copy(alpha = 0.78f) else Color(0xFFFDFEFF).copy(alpha = 0.88f)
+    val baseBottom = if (dark) Color(0xFF111827).copy(alpha = 0.82f) else Color(0xFFE5EAF3).copy(alpha = 0.82f)
+    val edge = if (dark) Color.White.copy(alpha = 0.22f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
     val accent = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
@@ -283,9 +300,9 @@ private fun GlassPanel(
             .background(
                 Brush.linearGradient(
                     listOf(
-                        if (highlighted) accent.copy(alpha = if (dark) 0.34f else 0.20f) else baseTop,
+                        if (highlighted) accent.copy(alpha = if (dark) 0.30f else 0.10f) else baseTop,
                         baseBottom,
-                        if (dark) Color(0xFF182A35).copy(alpha = 0.62f) else Color(0xFFE8F6F5).copy(alpha = 0.48f)
+                        if (dark) Color(0xFF182A35).copy(alpha = 0.62f) else Color(0xFFDCEDEA).copy(alpha = 0.28f)
                     )
                 )
             )
@@ -294,7 +311,7 @@ private fun GlassPanel(
         Box(
             Modifier.matchParentSize().background(
                 Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = if (dark) 0.17f else 0.10f), Color.Transparent),
+                    colors = listOf(accent.copy(alpha = if (dark) 0.16f else 0.045f), Color.Transparent),
                     center = Offset(0f, 0f),
                     radius = 760f
                 )
@@ -335,21 +352,21 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                val buttonShape = RoundedCornerShape(14.dp)
+                val buttonShape = CircleShape
                 Box(
-                    Modifier.size(42.dp).clip(buttonShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
-                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), buttonShape)
+                    Modifier.size(36.dp).clip(buttonShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.22f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), buttonShape)
                         .pressScaleClickable(onClick = onNewChat),
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.AddComment, "Новый чат", tint = MaterialTheme.colorScheme.onBackground) }
+                ) { Icon(Icons.Filled.Add, "Новый чат", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
                 Box(
-                    Modifier.size(42.dp).clip(buttonShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
-                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), buttonShape)
+                    Modifier.size(36.dp).clip(buttonShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.22f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), buttonShape)
                         .pressScaleClickable(onClick = onSettings),
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.Settings, "Настройки", tint = MaterialTheme.colorScheme.onBackground) }
+                ) { Icon(Icons.Filled.Tune, "Настройки", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
             }
         }
     }
@@ -390,15 +407,6 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
                                     radius = 260f
                                 ), CircleShape
                             )
-                    )
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.linearGradient(
-                                colors = listOf(Color.Transparent, Color.White.copy(alpha = if (dark) 0.075f else 0.30f), Color.Transparent),
-                                start = Offset(shimmer * 760f, 0f),
-                                end = Offset(shimmer * 760f + 380f, 560f)
-                            )
-                        )
                     )
                     Column(Modifier.fillMaxWidth().padding(21.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -602,8 +610,9 @@ private fun ChatWorkspace(
                     messages = if (destinationChatId == selectedChatId) messages else null,
                     onBack = onBackToChats,
                     onSend = { text, attachments ->
-                        scope.launch { repository.sendUserMessage(destinationChat.id, text, attachments) }
+                        repository.sendUserMessage(destinationChat.id, text, attachments)
                     },
+                    onDeleteMessage = { message -> repository.deleteMessage(message) },
                     onRename = { title -> scope.launch { repository.rename(destinationChat.id, title) } }
                 )
             }
@@ -853,24 +862,30 @@ private fun ChatListScreen(
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Переименовать чат") },
-            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Название") }) },
+            title = { Text("Переименовать чат", color = MaterialTheme.colorScheme.onSurface) },
+            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Название") }, colors = auroraTextFieldColors()) },
             confirmButton = { PressAnimatedTextButton("Сохранить") { onRename(chat, title); renameTarget = null } },
-            dismissButton = { PressAnimatedTextButton("Отмена") { renameTarget = null } }
+            dismissButton = { PressAnimatedTextButton("Отмена") { renameTarget = null } },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            tonalElevation = 0.dp
         )
     }
     deleteTarget?.let { chat ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Удалить диалог?") },
-            text = { Text("«${chat.title}» и все его сообщения будут удалены без возможности восстановления.") },
+            title = { Text("Удалить диалог?", color = MaterialTheme.colorScheme.onSurface) },
+            text = { Text("«${chat.title}» и все его сообщения будут удалены без возможности восстановления.", color = MaterialTheme.colorScheme.onSurfaceVariant) },
             confirmButton = {
                 PressAnimatedTextButton(
                     text = "Удалить",
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { onDelete(chat); deleteTarget = null }
             },
-            dismissButton = { PressAnimatedTextButton("Отмена") { deleteTarget = null } }
+            dismissButton = { PressAnimatedTextButton("Отмена") { deleteTarget = null } },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            tonalElevation = 0.dp
         )
     }
 }
@@ -943,7 +958,8 @@ private fun ConversationScreen(
     chat: ChatEntity,
     messages: List<MessageEntity>?,
     onBack: () -> Unit,
-    onSend: (String, List<StoredAttachment>) -> Unit,
+    onSend: suspend (String, List<StoredAttachment>) -> Unit,
+    onDeleteMessage: suspend (MessageEntity) -> Unit,
     onRename: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -951,8 +967,35 @@ private fun ConversationScreen(
     val attachmentStorage = remember(context) { AttachmentStorage(context.applicationContext) }
     var showRename by remember { mutableStateOf(false) }
     var showAttachmentMenu by remember { mutableStateOf(false) }
+    val attachmentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
+    var isSending by remember { mutableStateOf(false) }
     var attachmentError by remember { mutableStateOf<String?>(null) }
+    var uiNotice by remember { mutableStateOf<String?>(null) }
+    var animatedMessageId by remember(chat.id) { mutableStateOf<Long?>(null) }
+    var previousMessageCount by remember(chat.id) { mutableIntStateOf(-1) }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val uriHandler = LocalUriHandler.current
+
+    fun showNotice(message: String) {
+        scope.launch {
+            uiNotice = message
+            delay(2200)
+            if (uiNotice == message) uiNotice = null
+        }
+    }
+
+    LaunchedEffect(messages?.size, messages?.lastOrNull()?.id) {
+        val current = messages ?: return@LaunchedEffect
+        if (previousMessageCount < 0) {
+            previousMessageCount = current.size
+        } else if (current.size > previousMessageCount) {
+            animatedMessageId = current.lastOrNull()?.id
+            previousMessageCount = current.size
+        } else {
+            previousMessageCount = current.size
+        }
+    }
     val pendingAttachments = remember(chat.id) { mutableStateListOf<StoredAttachment>() }
     var pendingCameraFile by remember(chat.id) { mutableStateOf<File?>(null) }
     val messageListState = rememberLazyListState()
@@ -996,7 +1039,7 @@ private fun ConversationScreen(
                 }
             }
             if (addedCount > 0) {
-                Toast.makeText(context, "Добавлено файлов: $addedCount", Toast.LENGTH_SHORT).show()
+                showNotice("Добавлено файлов: $addedCount")
             }
         }
     }
@@ -1063,12 +1106,23 @@ private fun ConversationScreen(
 
     fun sendCurrentMessage() {
         val text = localText.trim()
-        if (text.isEmpty() && pendingAttachments.isEmpty()) return
+        if (isSending || (text.isEmpty() && pendingAttachments.isEmpty())) return
         val attachments = pendingAttachments.toList()
-        onSend(text, attachments)
-        localText = ""
-        pendingAttachments.clear()
-        attachmentError = null
+        isSending = true
+        scope.launch {
+            try {
+                onSend(text, attachments)
+                localText = ""
+                pendingAttachments.clear()
+                attachmentError = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                attachmentError = "Не удалось сохранить сообщение: ${error.message ?: "попробуй ещё раз"}"
+            } finally {
+                isSending = false
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
@@ -1145,25 +1199,94 @@ private fun ConversationScreen(
                     items(loadedMessagesState, key = { it.id }) { message ->
                         val isUser = message.role == "user"
                         val attachments = AttachmentJson.decode(message.attachmentsJson)
-                        Row(
-                            Modifier.fillMaxWidth().animateItem(),
-                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                        ) {
-                            GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
-                                Column(
-                                    Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    if (message.content.isNotBlank()) {
-                                        Text(message.content, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                    attachments.forEach { attachment ->
-                                        StoredAttachmentCard(attachment) {
-                                            openStoredAttachment(context, attachment)
+                        var messageMenuExpanded by remember(message.id) { mutableStateOf(false) }
+                        var messageAnimatedIn by remember(message.id) { mutableStateOf(false) }
+                        LaunchedEffect(message.id, animatedMessageId) {
+                            if (message.id == animatedMessageId) messageAnimatedIn = true
+                        }
+                        val messageContent: @Composable ColumnScope.() -> Unit = {
+                            if (message.content.isNotBlank()) {
+                                MessageBodyText(message.id, message.content) { url ->
+                                    runCatching { uriHandler.openUri(url) }
+                                        .onFailure { showNotice("Не удалось открыть ссылку") }
+                                }
+                            }
+                            attachments.forEach { attachment ->
+                                StoredAttachmentCard(attachment) {
+                                    openStoredAttachment(context, attachment)?.let { attachmentError = it }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                Box {
+                                    PressAnimatedIconButton(
+                                        onClick = { messageMenuExpanded = true },
+                                        icon = Icons.Filled.MoreHoriz,
+                                        contentDescription = "Действия с сообщением",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(30.dp),
+                                        iconModifier = Modifier.size(18.dp)
+                                    )
+                                    DropdownMenu(
+                                        expanded = messageMenuExpanded,
+                                        onDismissRequest = { messageMenuExpanded = false }
+                                    ) {
+                                        if (message.content.isNotBlank()) {
+                                            DropdownMenuItem(
+                                                text = { Text("Копировать текст") },
+                                                leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                                                onClick = {
+                                                    messageMenuExpanded = false
+                                                    clipboard.setPrimaryClip(ClipData.newPlainText("Aidroid message", message.content))
+                                                    showNotice("Сообщение скопировано")
+                                                }
+                                            )
                                         }
+                                        DropdownMenuItem(
+                                            text = { Text("Удалить сообщение", color = MaterialTheme.colorScheme.error) },
+                                            leadingIcon = { Icon(Icons.Filled.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
+                                            onClick = {
+                                                messageMenuExpanded = false
+                                                scope.launch {
+                                                    try {
+                                                        onDeleteMessage(message)
+                                                        showNotice("Сообщение удалено")
+                                                    } catch (cancelled: CancellationException) {
+                                                        throw cancelled
+                                                    } catch (error: Exception) {
+                                                        attachmentError = "Не удалось удалить сообщение: ${error.message ?: "ошибка хранилища"}"
+                                                    }
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             }
+                        }
+                        val messageRow: @Composable (Modifier) -> Unit = { itemModifier ->
+                            Row(
+                                itemModifier.fillMaxWidth(),
+                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                            ) {
+                                GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
+                                    Column(
+                                        Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                                        content = messageContent
+                                    )
+                                }
+                            }
+                        }
+                        if (message.id == animatedMessageId) {
+                            AnimatedVisibility(
+                                modifier = Modifier.fillMaxWidth().animateItem(),
+                                visible = messageAnimatedIn,
+                                enter = fadeIn(tween(260)) + slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 7 } +
+                                    scaleIn(initialScale = 0.975f, animationSpec = tween(280, easing = FastOutSlowInEasing)),
+                                exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.98f, animationSpec = tween(150)),
+                                label = "new-message-${message.id}"
+                            ) { messageRow(Modifier) }
+                        } else {
+                            messageRow(Modifier.animateItem())
                         }
                     }
                 }
@@ -1188,13 +1311,48 @@ private fun ConversationScreen(
                         }
                     }
                 }
-                if (attachmentError != null) {
-                    Text(
-                        attachmentError.orEmpty(),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
+                AnimatedVisibility(
+                    visible = attachmentError != null,
+                    enter = fadeIn(tween(180)) + expandVertically(animationSpec = tween(220)) + slideInVertically(tween(220)) { -it / 4 },
+                    exit = fadeOut(tween(140)) + shrinkVertically(animationSpec = tween(180)),
+                    label = "attachment-error"
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f))
+                            .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.22f), RoundedCornerShape(14.dp))
+                            .padding(start = 11.dp, end = 5.dp, top = 7.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                        Text(attachmentError.orEmpty(), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                        PressAnimatedIconButton(
+                            onClick = { attachmentError = null },
+                            icon = Icons.Filled.Close,
+                            contentDescription = "Закрыть уведомление",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(28.dp),
+                            iconModifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = uiNotice != null,
+                    enter = fadeIn(tween(180)) + expandVertically(animationSpec = tween(220)) + slideInVertically(tween(220)) { -it / 4 },
+                    exit = fadeOut(tween(140)) + shrinkVertically(animationSpec = tween(180)),
+                    label = "conversation-notice"
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f))
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+                        Text(uiNotice.orEmpty(), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1208,35 +1366,6 @@ private fun ConversationScreen(
                             contentDescription = "Прикрепить",
                             tint = MaterialTheme.colorScheme.primary
                         )
-                        DropdownMenu(
-                            expanded = showAttachmentMenu,
-                            onDismissRequest = { showAttachmentMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Фото из галереи") },
-                                leadingIcon = { Icon(Icons.Filled.PhotoLibrary, null) },
-                                onClick = {
-                                    showAttachmentMenu = false
-                                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Сделать фото") },
-                                leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
-                                onClick = {
-                                    showAttachmentMenu = false
-                                    launchCamera()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Прикрепить файл") },
-                                leadingIcon = { Icon(Icons.Filled.InsertDriveFile, null) },
-                                onClick = {
-                                    showAttachmentMenu = false
-                                    documentPicker.launch(arrayOf("*/*"))
-                                }
-                            )
-                        }
                     }
                     OutlinedTextField(
                         value = localText,
@@ -1247,18 +1376,53 @@ private fun ConversationScreen(
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { sendCurrentMessage() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colorScheme.primary
-                        )
+                        colors = auroraTextFieldColors()
                     )
-                    GlowSendButton(enabled = localText.isNotBlank() || pendingAttachments.isNotEmpty()) {
+                    GlowSendButton(
+                        enabled = !isSending && (localText.isNotBlank() || pendingAttachments.isNotEmpty()),
+                        loading = isSending
+                    ) {
                         sendCurrentMessage()
+                    }
+                }
+            }
+        }
+    }
+    if (showAttachmentMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showAttachmentMenu = false },
+            sheetState = attachmentSheetState,
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 0.dp,
+            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)) }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp).padding(bottom = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Text("Добавить вложение", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("Выбери источник — можно добавить несколько файлов к одному сообщению.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                AttachmentChoiceRow(Icons.Filled.PhotoLibrary, "Фото из галереи", "Выбрать одно или несколько изображений") {
+                    scope.launch {
+                        attachmentSheetState.hide()
+                        showAttachmentMenu = false
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                }
+                AttachmentChoiceRow(Icons.Filled.PhotoCamera, "Сделать фото", "Открыть камеру и приложить снимок") {
+                    scope.launch {
+                        attachmentSheetState.hide()
+                        showAttachmentMenu = false
+                        launchCamera()
+                    }
+                }
+                AttachmentChoiceRow(Icons.Filled.InsertDriveFile, "Прикрепить файл", "Документы, архивы и другие файлы") {
+                    scope.launch {
+                        attachmentSheetState.hide()
+                        showAttachmentMenu = false
+                        documentPicker.launch(arrayOf("*/*"))
                     }
                 }
             }
@@ -1268,13 +1432,115 @@ private fun ConversationScreen(
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
             onDismissRequest = { showRename = false },
-            title = { Text("Название чата") },
-            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) },
+            title = { Text("Название чата", color = MaterialTheme.colorScheme.onSurface) },
+            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, colors = auroraTextFieldColors()) },
             confirmButton = { PressAnimatedTextButton("Сохранить") { onRename(title); showRename = false } },
-            dismissButton = { PressAnimatedTextButton("Отмена") { showRename = false } }
+            dismissButton = { PressAnimatedTextButton("Отмена") { showRename = false } },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            tonalElevation = 0.dp
         )
     }
 }
+
+@Composable
+private fun AttachmentChoiceRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(19.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f), RoundedCornerShape(19.dp))
+            .pressScaleClickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MessageBodyText(
+    messageId: Long,
+    content: String,
+    onOpenLink: (String) -> Unit
+) {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val annotated = remember(messageId, content, linkColor) {
+        val pattern = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE)
+        buildAnnotatedString {
+            var cursor = 0
+            pattern.findAll(content).forEach { match ->
+                val clean = match.value.trimEnd('.', ',', '!', '?', ';', ':', ')', ']', '}')
+                if (clean.isNotEmpty()) {
+                    val start = match.range.first
+                    val suffixStart = start + clean.length
+                    append(content.substring(cursor, start))
+                    val link = LinkAnnotation.Url(
+                        clean,
+                        TextLinkStyles(
+                            style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+                        )
+                    ) { clicked ->
+                        onOpenLink((clicked as LinkAnnotation.Url).url)
+                    }
+                    withLink(link) { append(clean) }
+                    if (suffixStart <= match.range.last) append(content.substring(suffixStart, match.range.last + 1))
+                    cursor = match.range.last + 1
+                }
+            }
+            append(content.substring(cursor))
+        }
+    }
+    var expanded by remember(messageId) { mutableStateOf(false) }
+    var canExpand by remember(messageId) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().animateContentSize(tween(240, easing = FastOutSlowInEasing))) {
+        BasicText(
+            text = annotated,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+            maxLines = if (expanded) Int.MAX_VALUE else 8,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { canExpand = it.didOverflowHeight }
+        )
+        AnimatedVisibility(visible = canExpand || expanded, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+            TextButton(
+                onClick = { expanded = !expanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 3.dp)
+            ) {
+                Text(if (expanded) "Свернуть" else "Показать ещё", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun auroraTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    focusedLabelColor = MaterialTheme.colorScheme.primary,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.68f),
+    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.32f),
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    cursorColor = MaterialTheme.colorScheme.primary
+)
 
 private const val MAX_MESSAGE_ATTACHMENTS = 10
 private const val MAX_MESSAGE_TOTAL_BYTES = 50L * 1024L * 1024L
@@ -1373,21 +1639,22 @@ private fun formatAttachmentSize(bytes: Long): String = when {
     else -> String.format(java.util.Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0))
 }
 
-private fun openStoredAttachment(context: android.content.Context, attachment: StoredAttachment) {
-    try {
+private fun openStoredAttachment(context: android.content.Context, attachment: StoredAttachment): String? {
+    return try {
         val file = File(context.filesDir, attachment.relativePath)
         if (!file.isFile) {
-            Toast.makeText(context, "Файл не найден в хранилище приложения.", Toast.LENGTH_SHORT).show()
-            return
+            "Файл не найден в хранилище приложения."
+        } else {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val viewIntent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.mimeType)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(viewIntent, "Открыть вложение"))
+            null
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val viewIntent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.mimeType)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(viewIntent, "Открыть вложение"))
     } catch (error: ActivityNotFoundException) {
-        Toast.makeText(context, "На устройстве нет приложения для этого типа файла.", Toast.LENGTH_LONG).show()
+        "На устройстве нет приложения для этого типа файла."
     } catch (error: Exception) {
-        Toast.makeText(context, "Не удалось открыть файл: ${error.message}", Toast.LENGTH_LONG).show()
+        "Не удалось открыть файл: ${error.message ?: "неизвестная ошибка"}"
     }
 }
 
@@ -1456,7 +1723,7 @@ private fun Modifier.pressScaleClickable(
 }
 
 @Composable
-private fun GlowSendButton(enabled: Boolean, onClick: () -> Unit) {
+private fun GlowSendButton(enabled: Boolean, loading: Boolean = false, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val elevation by animateDpAsState(if (enabled) 16.dp else 2.dp, tween(220), label = "send-glow")
@@ -1472,7 +1739,13 @@ private fun GlowSendButton(enabled: Boolean, onClick: () -> Unit) {
             .border(1.dp, Color.White.copy(alpha = if (enabled) 0.62f else 0.20f), CircleShape)
             .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
-    ) { Icon(Icons.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+    ) {
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(19.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Icon(Icons.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+    }
 }
 @Composable
 private fun PlaceholderScreen(title: String, description: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -1510,7 +1783,7 @@ private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit)
             }
         }
         InfoCard(Icons.Filled.Security, "Локальное хранение", "История чатов хранится в базе Room на устройстве. Внешняя передача пока не выполняется.")
-        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.3 · Aurora Glass")
+        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.7 · Aurora Glass")
     }
 }
 @Composable

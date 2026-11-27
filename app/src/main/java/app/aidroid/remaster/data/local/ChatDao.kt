@@ -39,6 +39,9 @@ interface ChatDao {
     @Delete
     suspend fun deleteChat(chat: ChatEntity)
 
+    @Delete
+    suspend fun deleteMessage(message: MessageEntity)
+
     @Query("UPDATE chats SET title = :title, updatedAt = :updatedAt WHERE id = :chatId")
     suspend fun renameChat(chatId: Long, title: String, updatedAt: Long)
 
