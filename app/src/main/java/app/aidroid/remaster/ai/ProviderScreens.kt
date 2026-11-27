@@ -450,7 +450,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
                     title = "Поиск в интернете",
-                    description = "Свежие страницы и ссылки через Brave Search",
+                    description = "Бесплатный поиск без ключей, открытие сайтов и извлечение основного текста",
                     checked = "web_search" in preferences.enabledTools,
                     onChecked = { toggleTool("web_search", it) }
                 )
@@ -518,7 +518,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Каждый вызов проверяется приложением. Внешний поиск требует отдельный ключ, запуск кода и внешние действия требуют подтверждения.",
+                    "Каждый вызов проверяется приложением. Базовый веб-поиск не требует ключей и регистрации. Запуск кода и внешние действия требуют подтверждения.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -527,9 +527,9 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("ПОДКЛЮЧЕНИЕ ВЕБ-ПОИСКА", fontWeight = FontWeight.Bold)
+                Text("НЕОБЯЗАТЕЛЬНЫЙ РЕЗЕРВНЫЙ ПОИСК", fontWeight = FontWeight.Bold)
                 Text(
-                    "Brave Search API. Ключ хранится зашифрованным в Android Keystore и не попадает в историю чатов.",
+                    "Основной поиск работает бесплатно через публичные поисковые HTML-страницы DuckDuckGo и Mojeek. Ключ не нужен. При желании можно добавить Brave Search как дополнительный резерв.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -537,7 +537,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     value = braveKey,
                     onValueChange = { braveKey = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Brave Search API key") },
+                    label = { Text("Необязательный Brave Search API key") },
                     singleLine = true,
                     visualTransformation = if (braveKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
                         else PasswordVisualTransformation(),
@@ -564,7 +564,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     ) { Text("Удалить") }
                 }
                 Text(
-                    "Brave Search — внешний сервис; запросы поиска передаются ему. Ключ можно получить в кабинете Brave Search API.",
+                    "Brave используется только как резерв, если бесплатные источники не вернули результаты. При пустом поле никакой ключ или регистрация не требуются.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )

@@ -48,14 +48,14 @@ The reasoning toggle is intentionally opt-in because reasoning parameters differ
 
 The first runtime provides a safe calculator and current device date/time. The model may request these tools, but the app validates every requested name against the enabled registry and executes only registered functions. The runtime has a five-round tool-call limit per response. No shell command, arbitrary code, or remote action is executed.
 
-MCP servers, web search, app integrations, document parsing, tool approvals and an action audit log are not enabled in this iteration. They must be added as explicit connectors with permission scopes and confirmation for consequential actions.
+MCP servers, app integrations, and a persistent tool execution audit log are not enabled in this iteration. They must be added as explicit connectors with permission scopes and confirmation for consequential actions.
 
 
 ## Agent tools
 
 The Agent workspace includes optional tools. Each connector is opt-in:
 
-- Web search uses Brave Search. Add a Brave Search API key in the Agent workspace. The key is encrypted with Android Keystore; search queries are sent to Brave when the agent calls the tool.
+- Web search works without API keys or registration through DuckDuckGo and Mojeek public HTML search pages. The agent can call `web_search` for links/snippets and `web_open` to visit a public HTTP/HTTPS page and extract its title, description and readable text. An optional Brave Search key is used only as a fallback if both anonymous sources fail; it is encrypted with Android Keystore.
 - Image analysis sends user-selected JPEG, PNG or WebP attachments to the active vision-capable model. It does not scan the gallery automatically.
 - File analysis reads only files the user attached through Android's document picker. Text, Markdown, CSV, JSON, XML, HTML, PDF, DOCX, XLSX and PPTX are supported in this iteration. PDF and Office text extraction runs locally before any extracted content is sent to the active model. Extracted content is bounded by size/page/context limits.
 - Image generation and editing use the OpenAI Image API through a separately configured OpenAI provider key. The active chat model can be from a different provider. Generated images are stored as normal chat attachments. Editing never overwrites the original.
@@ -72,4 +72,5 @@ Tool calls are validated against the enabled registry. User approval expires aft
 - Office document extraction is text-based; it does not preserve complex layout, formulas, charts or slide visuals. Image-only/scanned PDFs need a separate OCR capability.
 - The Piston server is external to Aidroid. It must be controlled by the user or a trusted provider and configured with its own sandbox/container restrictions. Aidroid sends source code only after the in-app approval.
 - Email/calendar connectors open system apps; there is no background mail sending, direct calendar database access or silent event creation.
+- Search providers are public web interfaces rather than stable APIs. They may change their HTML, throttle requests or show bot checks; the app falls back between sources and reports when none work. Page reading accepts public HTTP/HTTPS HTML or text only, limits response sizes and redirects, rejects local/private IP targets, and does not execute page scripts or download documents. PDF and Office URLs are not parsed by the web reader in this iteration.
 - MCP client discovery, scoped plugin APIs and persistent tool execution audit history remain future work.
