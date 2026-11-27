@@ -6,9 +6,9 @@ package app.aidroid.remaster.ai
  */
 object AgentSafetyPolicy {
     private val restrictedTerms = listOf(
-        Regex("(?iu)\\b(firearms?|guns?|rifles?|pistols?|ammunition|ammo|explosives?|grenades?|detonators?|switchblades?|tactical knives|tasers?|pepper spray|mace|brass knuckles|stun guns?|bomb making|weapon construction)\\b"),
-        Regex("(?iu)\\b(recreational drugs?|cocaine|heroin|fentanyl|methamphetamine|meth|mdma|ecstasy|marijuana|cannabis|thc|vapes?|vaping|nicotine pouches|get high|drug dealer)\\b"),
-        Regex("(?iu)\\b(betting|sports betting|sportsbook|bookmakers?|gambling|online casino|slot machines?|prediction markets?|polymarket|wagering)\\b"),
+        Regex("(?iu)\\b(weapons?|firearms?|guns?|rifles?|pistols?|knives?|swords?|ammunition|ammo|explosives?|grenades?|detonators?|switchblades?|tasers?|pepper spray|mace|brass knuckles|stun guns?|bomb making|weapon construction)\\b"),
+        Regex("(?iu)\\b(recreational drugs?|cocaine|heroin|fentanyl|methamphetamine|meth|mdma|ecstasy|marijuana|cannabis|thc|vapes?|vaping|nicotine pouches|get high|drug dealer|alcohol|beer|wine|liquor)\\b"),
+        Regex("(?iu)\\b(betting|sports betting|sportsbook|bookmakers?|gambling|casinos?|slot machines?|prediction markets?|polymarket|wagering|poker for money)\\b"),
         Regex("(?iu)\\b(choking challenge|blackout challenge|fire challenge|dangerous challenge|dangerous stunt|breath holding challenge)\\b"),
         Regex("(?iu)(оруж\\w*|огнестрел\\w*|пистолет\\w*|винтов\\w*|ружь\\w*|патрон\\w*|боеприпас\\w*|взрывчат\\w*|гранат\\w*|детонатор\\w*|мина\\w*|нож\\w*|кастет\\w*|электрошок\\w*|перцов\\w* баллончик\\w*|самооборон\\w*)"),
         Regex("(?iu)(наркот\\w*|кокаин\\w*|героин\\w*|фентанил\\w*|метамфетамин\\w*|марихуан\\w*|каннабис\\w*|вейп\\w*|никотин\\w*|алкогол\\w*)"),
