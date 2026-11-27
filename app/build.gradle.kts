@@ -14,8 +14,8 @@ android {
         applicationId = "app.aidroid.remaster"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.2.0-alpha.9"
+        versionCode = 10
+        versionName = "0.2.0-alpha.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -72,6 +72,11 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.storage)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.okhttp)
 
     testImplementation(libs.junit)
