@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +30,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -142,6 +145,15 @@ private fun AidroidApp(repository: ChatRepository) {
     var darkTheme by rememberSaveable { mutableStateOf(true) }
     var selectedScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var selectedChatId by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    BackHandler(enabled = selectedChatId != null || selectedScreen != Screen.HOME) {
+        if (selectedScreen == Screen.CHAT && selectedChatId != null) {
+            selectedChatId = null
+        } else {
+            selectedChatId = null
+            selectedScreen = Screen.HOME
+        }
+    }
     val chatLists by produceState<Pair<List<ChatEntity>, List<ChatEntity>>?>(
         initialValue = null,
         key1 = repository
@@ -479,11 +491,17 @@ private fun GlowButton(text: String, onClick: () -> Unit) {
         label = "glass-button-scale"
     )
     val shape = RoundedCornerShape(19.dp)
+    val dark = MaterialTheme.colorScheme.background.red < 0.2f
+    val buttonBrush = if (dark) {
+        Brush.linearGradient(listOf(Color(0xFFC2A7FF), Violet, Color(0xFF4A78B9)))
+    } else {
+        Brush.linearGradient(listOf(Color(0xFF426D7C), Color(0xFF31576F), Color(0xFF397783)))
+    }
     Box(
         Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(glow, shape, clip = false)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xFFC2A7FF), Violet, Color(0xFF4A78B9))))
+            .background(buttonBrush)
             .border(1.dp, Color.White.copy(alpha = if (pressed || hovered) 0.82f else 0.45f), shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
@@ -845,11 +863,11 @@ private fun ChatListScreen(
                                 .shadow(18.dp, CircleShape, clip = false)
                                 .clip(CircleShape)
                                 .background(
-                                    Brush.radialGradient(
+                                    Brush.linearGradient(
                                         listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.36f),
-                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
-                                            Color.Transparent
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                                         )
                                     )
                                 )
@@ -990,12 +1008,40 @@ private fun ChatListItem(
                     contentDescription = "Меню чата",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Переименовать") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text(if (chat.isPinned) "Открепить" else "Закрепить") }, leadingIcon = { Icon(Icons.Filled.PushPin, null) }, onClick = { menu = false; onPin() })
-                    DropdownMenuItem(text = { Text(if (chat.isArchived) "Вернуть из архива" else "Архивировать") }, leadingIcon = { Icon(Icons.Filled.Archive, null) }, onClick = { menu = false; onArchive() })
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Удалить", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                val menuShape = RoundedCornerShape(22.dp)
+                DropdownMenu(
+                    expanded = menu,
+                    onDismissRequest = { menu = false },
+                    modifier = Modifier
+                        .clip(menuShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.985f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), menuShape)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Переименовать", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, null, tint = MaterialTheme.colorScheme.primary) },
+                        onClick = { menu = false; onRename() },
+                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (chat.isPinned) "Открепить" else "Закрепить", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
+                        leadingIcon = { Icon(Icons.Filled.PushPin, null, tint = MaterialTheme.colorScheme.secondary) },
+                        onClick = { menu = false; onPin() },
+                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (chat.isArchived) "Вернуть из архива" else "Архивировать", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium) },
+                        leadingIcon = { Icon(Icons.Filled.Archive, null, tint = MaterialTheme.colorScheme.secondary) },
+                        onClick = { menu = false; onArchive() },
+                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                    DropdownMenuItem(
+                        text = { Text("Удалить", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; onDelete() },
+                        modifier = Modifier.padding(horizontal = 5.dp).clip(RoundedCornerShape(14.dp))
+                    )
                 }
             }
         }
@@ -1023,6 +1069,7 @@ private fun ConversationScreen(
     var isSending by remember { mutableStateOf(false) }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
+    var knownMessageIds by remember(chat.id) { mutableStateOf<Set<Long>?>(null) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
 
@@ -1032,6 +1079,10 @@ private fun ConversationScreen(
             delay(2200)
             if (uiNotice == message) uiNotice = null
         }
+    }
+
+    LaunchedEffect(messages) {
+        messages?.let { current -> knownMessageIds = current.map { it.id }.toSet() }
     }
 
     val pendingAttachments = remember(chat.id) { mutableStateListOf<StoredAttachment>() }
@@ -1223,10 +1274,33 @@ private fun ConversationScreen(
                                     }
                                 }
                             }
-                            Row(
-                                Modifier.fillMaxWidth().animateItem(),
-                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                            val isNewMessage = knownMessageIds?.contains(message.id) == false
+                            AnimatedVisibility(
+                                visible = !isNewMessage,
+                                enter = fadeIn(tween(190)) +
+                                    slideInVertically(tween(270, easing = FastOutSlowInEasing)) { it / 3 } +
+                                    scaleIn(
+                                        initialScale = 0.94f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    ),
+                                exit = fadeOut(tween(120)),
+                                modifier = Modifier.fillMaxWidth().animateItem(
+                                    fadeInSpec = tween(180),
+                                    placementSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    fadeOutSpec = tween(120)
+                                ),
+                                label = "telegram-message-${message.id}"
                             ) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                                ) {
                                 GlassPanel(
                                     modifier = Modifier.widthIn(max = 320.dp).combinedClickable(
                                         onClick = {},
@@ -1241,6 +1315,7 @@ private fun ConversationScreen(
                                         verticalArrangement = Arrangement.spacedBy(7.dp),
                                         content = messageContent
                                     )
+                                }
                                 }
                             }
                         }
@@ -1297,26 +1372,12 @@ private fun ConversationScreen(
                     }
                 }
             }
-        }
-
-        GlassPanel(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 9.dp), cornerRadius = 25) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+            Box(
+                Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp)
             ) {
-                if (pendingAttachments.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        pendingAttachments.forEach { attachment ->
-                            PendingAttachmentChip(attachment) {
-                                pendingAttachments.remove(attachment)
-                                attachmentStorage.delete(attachment)
-                            }
-                        }
-                    }
-                }
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 AnimatedVisibility(
                     visible = attachmentError != null,
                     enter = fadeIn(tween(180)) + expandVertically(animationSpec = tween(220)) + slideInVertically(tween(220)) { -it / 4 },
@@ -1358,6 +1419,29 @@ private fun ConversationScreen(
                     ) {
                         Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                         Text(uiNotice.orEmpty(), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                }
+            }
+
+        }
+
+        GlassPanel(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 9.dp), cornerRadius = 25) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                if (pendingAttachments.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        pendingAttachments.forEach { attachment ->
+                            PendingAttachmentChip(attachment) {
+                                pendingAttachments.remove(attachment)
+                                attachmentStorage.delete(attachment)
+                            }
+                        }
                     }
                 }
                 Row(
