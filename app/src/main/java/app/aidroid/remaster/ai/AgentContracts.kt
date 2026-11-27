@@ -28,7 +28,9 @@ data class ProviderConfig(
     val baseUrl: String,
     val model: String,
     val enabled: Boolean = true,
-    val supportsReasoning: Boolean = false
+    val supportsReasoning: Boolean = false,
+    // OpenAI-compatible chat APIs do not necessarily implement the Images API.
+    val supportsImageApi: Boolean = false
 )
 
 @Serializable
@@ -47,7 +49,9 @@ data class AgentPreferences(
         "voice_output"
     ),
     val systemPrompt: String = "",
-    val codeRunnerUrl: String = ""
+    val codeRunnerUrl: String = "",
+    // Null means choose the active image-capable provider, then direct OpenAI.
+    val imageProviderId: String? = null
 )
 
 data class LlmImageAttachment(
