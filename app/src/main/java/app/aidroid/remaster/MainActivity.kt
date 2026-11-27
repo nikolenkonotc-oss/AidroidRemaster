@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
         val cloudSync = FirebaseCloudSync(applicationContext)
         val repository = ChatRepository(database.chatDao(), attachmentStorage, cloudSync)
         val providerManager = ProviderManager(applicationContext)
-        val agentRunner = AgentRunner(providerManager, database.chatDao(), repository)
+        val agentRunner = AgentRunner(applicationContext, providerManager, database.chatDao(), repository, attachmentStorage)
         setContent { AidroidApp(repository, cloudSync, providerManager, agentRunner) }
     }
 }
