@@ -44,7 +44,6 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.animateItem
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -748,12 +747,12 @@ private fun ChatListScreen(
                             if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f) else Color.Transparent,
                             RoundedCornerShape(14.dp)
                         )
-                        .pressScaleClickable {
+                        .pressScaleClickable(onClick = {
                             if (archived != isArchive) {
                                 onToggleArchived(isArchive)
                                 query = ""
                             }
-                        }
+                        })
                         .padding(vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
