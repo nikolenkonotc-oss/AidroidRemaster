@@ -2009,23 +2009,35 @@ private fun ConversationScreen(
                         }
                     }
                     Box(Modifier.fillMaxSize()) {
-                        AnimatedVisibility(
-                            visible = loadedMessagesState.isNotEmpty() && !isAtBottom,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
-                        enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.82f, animationSpec = tween(180)),
-                        exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.88f, animationSpec = tween(140)),
-                        label = "jump-to-latest-message"
-                    ) {
+                        val jumpVisible = loadedMessagesState.isNotEmpty() && !isAtBottom
+                        val jumpAlpha by animateFloatAsState(
+                            targetValue = if (jumpVisible) 1f else 0f,
+                            animationSpec = tween(160, easing = FastOutSlowInEasing),
+                            label = "jump-to-latest-alpha"
+                        )
+                        val jumpScale by animateFloatAsState(
+                            targetValue = if (jumpVisible) 1f else 0.86f,
+                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                            label = "jump-to-latest-scale"
+                        )
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
                             contentColor = MaterialTheme.colorScheme.primary,
                             tonalElevation = 3.dp,
                             shadowElevation = 7.dp,
-                            modifier = Modifier.size(46.dp)
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                                .padding(bottom = 16.dp)
+                                .size(46.dp)
+                                .graphicsLayer {
+                                    alpha = jumpAlpha
+                                    scaleX = jumpScale
+                                    scaleY = jumpScale
+                                }
                                 .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), CircleShape)
                         ) {
                             IconButton(
+                                enabled = jumpVisible,
                                 onClick = {
                                     scope.launch {
                                         if (loadedMessagesState.isNotEmpty()) {
@@ -2042,7 +2054,6 @@ private fun ConversationScreen(
                                 )
                             }
                         }
-                    }
                     }
             Box(
                 Modifier.align(Alignment.BottomCenter)
