@@ -57,13 +57,12 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
             buildString {
                 for (entry in candidates) {
                     if (length >= MAX_EXTRACTED_CHARS || totalBytesRead >= MAX_ARCHIVE_TOTAL_BYTES) break
-                    if (entry.size > MAX_ARCHIVE_ENTRY_BYTES) continue
-                    val remainingBytes = minOf(
-                        MAX_ARCHIVE_ENTRY_BYTES,
-                        MAX_ARCHIVE_TOTAL_BYTES - totalBytesRead
-                    )
+                    val remainingTotalBytes = MAX_ARCHIVE_TOTAL_BYTES - totalBytesRead
+                    if (entry.size < 0L || entry.size > MAX_ARCHIVE_ENTRY_BYTES || entry.size > remainingTotalBytes) {
+                        continue
+                    }
                     val bytes = zip.getInputStream(entry).use { input ->
-                        readBoundedArchiveEntry(input, remainingBytes)
+                        readBoundedArchiveEntry(input, entry.size.toInt())
                     } ?: continue
                     totalBytesRead += bytes.size
                     if (bytes.isEmpty() || !looksLikeText(bytes)) continue
