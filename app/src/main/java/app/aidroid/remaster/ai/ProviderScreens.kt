@@ -625,7 +625,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("НЕОБЯЗАТЕЛЬНЫЙ РЕЗЕРВНЫЙ ПОИСК", fontWeight = FontWeight.Bold)
                 Text(
-                    "Основной поиск работает бесплатно через публичные поисковые HTML-страницы DuckDuckGo и Mojeek. Ключ не нужен. При желании можно добавить Brave Search как дополнительный резерв.",
+                    "Основной поиск использует DuckDuckGo и Mojeek. При нехватке результатов добавляются Wikipedia и Google News RSS. RSS Google News не является документированным API и предназначен для личного некоммерческого использования; доступность и условия могут измениться. Brave Search подключается отдельно по желанию.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
