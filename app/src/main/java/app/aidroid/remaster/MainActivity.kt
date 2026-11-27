@@ -347,7 +347,7 @@ private fun ChatWorkspace(
             onOpen = { onSelectChat(it) },
             onRename = { chat, title -> scope.launch { repository.rename(chat.id, title) } },
             onPin = { chat -> scope.launch { repository.setPinned(chat, !chat.isPinned) } },
-            onArchive = { chat -> scope.launch { repository.setArchived(chat.id, !chat.isArchived) } },
+            onArchive = { chat -> scope.launch { repository.setArchived(chat, !chat.isArchived) } },
             onDelete = { chat -> scope.launch { repository.delete(chat) } }
         )
     } else {
