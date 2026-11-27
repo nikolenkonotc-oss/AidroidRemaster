@@ -141,7 +141,7 @@ class ProviderHttpClient {
                 arguments = parseObject(args)
             )
         }
-        LlmResponse(text.trim(), calls)
+        return LlmResponse(text.trim(), calls)
     }
 
     private fun openAiChatCompletions(
@@ -200,7 +200,7 @@ class ProviderHttpClient {
                 arguments = parseObject(function["arguments"]?.jsonPrimitive?.contentOrNull.orEmpty())
             )
         }
-        LlmResponse(content.trim(), calls)
+        return LlmResponse(content.trim(), calls)
     }
 
     private fun anthropicMessages(
@@ -277,7 +277,7 @@ class ProviderHttpClient {
                 arguments = obj["input"]?.jsonObject ?: buildJsonObject { }
             )
         }
-        LlmResponse(text.trim(), calls)
+        return LlmResponse(text.trim(), calls)
     }
 
     private fun geminiGenerate(
@@ -344,7 +344,7 @@ class ProviderHttpClient {
                 arguments = call["args"]?.jsonObject ?: buildJsonObject { }
             )
         }
-        LlmResponse(text.trim(), calls)
+        return LlmResponse(text.trim(), calls)
     }
 
     private fun post(url: String, payload: JsonObject, headers: Map<String, String> = emptyMap()): JsonObject {
