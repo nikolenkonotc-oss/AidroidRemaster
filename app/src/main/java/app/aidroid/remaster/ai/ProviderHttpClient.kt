@@ -238,7 +238,7 @@ class ProviderHttpClient {
                         when {
                             message.role == "assistant" && message.providerContent != null -> {
                                 // Preserve Claude's original thinking/signature blocks across tool-use turns.
-                                put("content", message.providerContent)
+                                putJsonArray("content") { message.providerContent?.forEach { add(it) } }
                             }
                             message.role == "assistant" && message.toolCalls.isNotEmpty() -> {
                                 putJsonArray("content") {
@@ -325,7 +325,7 @@ class ProviderHttpClient {
                     when {
                         message.role == "assistant" && message.providerContent != null -> {
                             // Preserve Gemini thoughtSignature and native function-call parts on tool continuation.
-                            put("parts", message.providerContent)
+                            putJsonArray("parts") { message.providerContent?.forEach { add(it) } }
                         }
                         message.role == "tool" -> {
                             putJsonArray("parts") {
