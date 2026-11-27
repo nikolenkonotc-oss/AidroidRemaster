@@ -164,8 +164,9 @@ class AgentToolExecutor(
             val title = row["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val url = row["url"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val snippet = row["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val age = row["age"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) null
-            else WebSearchHit(title.take(300), url, snippet.take(900), "Brave Search")
+            else WebSearchHit(title.take(300), url, snippet.take(900), "Brave Search", age.take(100))
         }.take(8)
     }
 
@@ -354,7 +355,7 @@ class AgentToolExecutor(
                 putJsonObject("query") { put("type", "string"); put("description", "Что нужно найти в интернете") }
                 putJsonObject("freshness") {
                     put("type", "string")
-                    put("description", "Временной диапазон; укажи any, если фильтр не нужен")
+                    put("description", "Для свежих новостей выбирай day, week, month или year; для обычного поиска укажи any.")
                     putJsonArray("enum") { listOf("any", "day", "week", "month", "year").forEach { add(JsonPrimitive(it)) } }
                 }
             }
