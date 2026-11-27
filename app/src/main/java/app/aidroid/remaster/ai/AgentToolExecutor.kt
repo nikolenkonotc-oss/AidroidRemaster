@@ -403,8 +403,9 @@ class AgentToolExecutor(
                 !providers.apiKey(it.id).isNullOrBlank()
         }
         val activeId = providers.activeProvider()?.id
-        return candidates.firstOrNull { it.id == activeId }
+        return candidates.firstOrNull { it.id == activeId && it.type == ProviderType.OPENAI }
             ?: candidates.firstOrNull { it.type == ProviderType.OPENAI }
+            ?: candidates.firstOrNull { it.id == activeId }
             ?: candidates.firstOrNull()
     }
 
