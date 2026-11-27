@@ -291,7 +291,7 @@ class ProviderHttpClient {
             payload,
             mapOf("x-api-key" to apiKey, "anthropic-version" to ANTHROPIC_VERSION)
         )
-        val content = response["content"]?.jsonArray.orEmpty()
+        val content = response["content"]?.jsonArray ?: JsonArray(emptyList())
         val text = content.mapNotNull { block ->
             val obj = block.jsonObject
             if (obj["type"]?.jsonPrimitive?.contentOrNull == "text") {
@@ -383,7 +383,7 @@ class ProviderHttpClient {
         val url = "${config.baseUrl.trimEnd('/')}/v1beta/models/${encode(request.model)}:generateContent?key=${encode(apiKey)}"
         val response = post(url, payload)
         val parts = response["candidates"]?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray.orEmpty()
+            ?.jsonObject?.get("content")?.jsonObject?.get("parts")?.jsonArray ?: JsonArray(emptyList())
         val text = parts.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }.joinToString("")
         val calls = parts.mapNotNull { part ->
             val call = part.jsonObject["functionCall"]?.jsonObject ?: return@mapNotNull null
