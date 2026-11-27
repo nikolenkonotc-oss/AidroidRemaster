@@ -2,6 +2,7 @@ package app.aidroid.remaster.ai
 
 import kotlinx.serialization.json.*
 import java.time.ZonedDateTime
+import kotlin.math.pow
 import java.time.format.DateTimeFormatter
 
 object BuiltInTools {
@@ -148,5 +149,4 @@ private class MathExpressionParser(private val source: String) {
     private fun peek(): Char? = source.getOrNull(position)
     private fun skipSpaces() { while (source.getOrNull(position)?.isWhitespace() == true) position++ }
 
-    private fun Double.pow(other: Double): Double = kotlin.math.pow(this, other)
 }
