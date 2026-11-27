@@ -28,7 +28,8 @@ data class WebSearchHit(
     val title: String,
     val url: String,
     val snippet: String,
-    val source: String = ""
+    val source: String = "",
+    val publishedAt: String = ""
 )
 
 data class WebPageContent(
@@ -493,8 +494,9 @@ internal object WebHtmlParser {
             val title = WebHtmlParser.decodeFeedText(tag("title")).take(300)
             val url = WebHtmlParser.decodeFeedText(tag("link")).trim()
             val snippet = WebHtmlParser.stripFeedHtml(WebHtmlParser.decodeFeedText(tag("description"))).take(900)
+            val publishedAt = WebHtmlParser.decodeFeedText(tag("pubDate")).take(100)
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
-            results.putIfAbsent(url, WebSearchHit(title, url, snippet, "Google News"))
+            results.putIfAbsent(url, WebSearchHit(title, url, snippet, "Google News", publishedAt))
             if (results.size >= limit) return results.values.toList()
         }
         return results.values.toList()
