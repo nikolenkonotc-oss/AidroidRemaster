@@ -43,6 +43,9 @@ class ProviderManager(context: Context) {
         if (activeProviderId() == providerId) {
             setActiveProvider(updated.firstOrNull { it.enabled }?.id)
         }
+        if (agentPreferences().imageProviderId == providerId) {
+            saveAgentPreferences(agentPreferences().copy(imageProviderId = null))
+        }
     }
 
     fun newProviderId(): String = UUID.randomUUID().toString()
