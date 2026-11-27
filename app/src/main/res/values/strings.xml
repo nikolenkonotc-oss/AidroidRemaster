@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Set this to the OAuth 2.0 Web application client ID from Google Cloud Console. -->
+    <string name="google_web_client_id" translatable="false"></string>
+</resources>
