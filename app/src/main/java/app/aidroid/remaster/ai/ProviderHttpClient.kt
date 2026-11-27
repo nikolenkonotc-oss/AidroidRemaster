@@ -209,50 +209,80 @@ class ProviderHttpClient {
         request: LlmRequest
     ): LlmResponse {
         val system = request.messages.filter { it.role == "system" }.joinToString("\n\n") { it.content }
+        val sourceMessages = request.messages.filterNot { it.role == "system" }
         val messages = buildJsonArray {
-            request.messages.filterNot { it.role == "system" }.forEach { message ->
+            var index = 0
+            while (index < sourceMessages.size) {
+                val message = sourceMessages[index]
                 if (message.role == "tool") {
-                    add(buildJsonObject {
-                        put("role", "user")
-                        putJsonArray("content") {
+                    // Anthropic expects tool results in a single user content array after the assistant tool_use.
+                    val toolResults = buildJsonArray {
+                        while (index < sourceMessages.size && sourceMessages[index].role == "tool") {
+                            val result = sourceMessages[index]
                             add(buildJsonObject {
                                 put("type", "tool_result")
-                                put("tool_use_id", message.toolCallId.orEmpty())
-                                put("content", message.content)
+                                put("tool_use_id", result.toolCallId.orEmpty())
+                                put("content", result.content)
+                                if (result.content.startsWith("Ошибка инструмента:")) put("is_error", true)
                             })
+                            index++
                         }
+                    }
+                    add(buildJsonObject {
+                        put("role", "user")
+                        put("content", toolResults)
                     })
                 } else {
                     add(buildJsonObject {
                         put("role", if (message.role == "assistant") "assistant" else "user")
-                        if (message.toolCalls.isEmpty()) put("content", message.content)
-                        else putJsonArray("content") {
-                            if (message.content.isNotBlank()) {
-                                add(buildJsonObject { put("type", "text"); put("text", message.content) })
+                        when {
+                            message.role == "assistant" && message.providerContent != null -> {
+                                // Preserve Claude's original thinking/signature blocks across tool-use turns.
+                                put("content", message.providerContent)
                             }
-                            message.toolCalls.forEach { call ->
-                                add(buildJsonObject {
-                                    put("type", "tool_use")
-                                    put("id", call.id)
-                                    put("name", call.name)
-                                    put("input", call.arguments)
-                                })
+                            message.role == "assistant" && message.toolCalls.isNotEmpty() -> {
+                                putJsonArray("content") {
+                                    if (message.content.isNotBlank()) {
+                                        add(buildJsonObject { put("type", "text"); put("text", message.content) })
+                                    }
+                                    message.toolCalls.forEach { call ->
+                                        add(buildJsonObject {
+                                            put("type", "tool_use")
+                                            put("id", call.id)
+                                            put("name", call.name)
+                                            put("input", call.arguments)
+                                        })
+                                    }
+                                }
                             }
+                            else -> put("content", message.content)
                         }
                     })
+                    index++
                 }
             }
         }
+        val legacyManualThinking = request.model.contains("4-5", ignoreCase = true) ||
+            request.model.contains("3-7", ignoreCase = true)
         val payload = buildJsonObject {
             put("model", request.model)
-            put("max_tokens", 4096)
+            put("max_tokens", if (request.reasoningMode == ReasoningMode.DEEP) 8192 else 4096)
             if (system.isNotBlank()) put("system", system)
             put("messages", messages)
             if (request.tools.isNotEmpty()) put("tools", anthropicTools(request.tools))
-            if (config.supportsReasoning && request.reasoningMode == ReasoningMode.DEEP) {
-                putJsonObject("thinking") {
-                    put("type", "enabled")
-                    put("budget_tokens", 2048)
+            if (config.supportsReasoning) {
+                if (legacyManualThinking) {
+                    if (request.reasoningMode == ReasoningMode.DEEP) {
+                        putJsonObject("thinking") {
+                            put("type", "enabled")
+                            put("budget_tokens", 2048)
+                        }
+                    }
+                } else {
+                    putJsonObject("thinking") { put("type", "adaptive") }
+                    putJsonObject("output_config") {
+                        put("effort", request.reasoningMode.toApiValue())
+                    }
                 }
             }
         }
@@ -277,7 +307,7 @@ class ProviderHttpClient {
                 arguments = obj["input"]?.jsonObject ?: buildJsonObject { }
             )
         }
-        return LlmResponse(text.trim(), calls)
+        return LlmResponse(text.trim(), calls, providerContent = content)
     }
 
     private fun geminiGenerate(
@@ -395,7 +425,7 @@ class ProviderHttpClient {
                 put("name", tool.name)
                 put("description", tool.description)
                 put("parameters", tool.parameters)
-                put("strict", false)
+                put("strict", true)
             })
         }
     }
@@ -406,6 +436,7 @@ class ProviderHttpClient {
                 put("name", tool.name)
                 put("description", tool.description)
                 put("input_schema", tool.parameters)
+                put("strict", true)
             })
         }
     }
