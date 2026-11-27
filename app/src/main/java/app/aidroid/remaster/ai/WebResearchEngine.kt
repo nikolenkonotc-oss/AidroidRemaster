@@ -103,7 +103,7 @@ class WebResearchEngine {
                     redirect = current.resolve(location)
                 } else {
                     if (!response.isSuccessful) {
-                        throw IOException("Сайт вернул HTTP ${response.code.")
+                        throw IOException("Сайт вернул HTTP ${response.code}.")
                     }
                     val body = response.body ?: throw IOException("Сайт вернул пустой ответ.")
                     val type = body.contentType()?.let { it.toString().substringBefore(';').lowercase(Locale.ROOT) }
@@ -236,8 +236,10 @@ class WebResearchEngine {
             val scheme = uri.scheme?.lowercase(Locale.ROOT)
             require(scheme == "https" || scheme == "http") { "Разрешены только HTTP- и HTTPS-страницы." }
             require(uri.rawUserInfo.isNullOrBlank()) { "Ссылки с логином или паролем запрещены." }
-            val host = uri.host?.let { IDN.toASCII(it.removePrefix("[").removeSuffix("]")).lowercase(Locale.ROOT) }
+            val rawHost = uri.host?.removePrefix("[").removeSuffix("]")
                 ?: throw IllegalArgumentException("В ссылке не найден домен.")
+            val host = if (rawHost.contains(':')) rawHost.lowercase(Locale.ROOT)
+                else IDN.toASCII(rawHost).lowercase(Locale.ROOT)
             require(uri.port == -1 || uri.port == 80 || uri.port == 443) {
                 "Разрешены только стандартные веб-порты 80 и 443."
             }
@@ -318,8 +320,10 @@ internal object WebHtmlParser {
             if (!WebResearchEngine.isSafeUrlSyntax(target)) return@forEachIndexed
             val title = stripHtml(anchor.groupValues[2]).take(300)
             if (title.isBlank()) return@forEachIndexed
-            val nextAnchorStart = anchors.getOrNull(index + 1)?.range?.first ?: html.length
-            val tailEnd = minOf(nextAnchorStart, anchor.range.last + 2_400, html.length)
+            val nextResultStart = anchors.drop(index + 1).firstOrNull { next ->
+                attribute(next.groupValues[1], "class").orEmpty().split(Regex("""\s+""")).contains(linkClass)
+            }?.range?.first ?: html.length
+            val tailEnd = minOf(nextResultStart, anchor.range.last + 2_400, html.length)
             val tail = html.substring((anchor.range.last + 1).coerceAtMost(html.length), tailEnd.coerceAtLeast(anchor.range.last + 1))
             val snippet = extractClassText(tail, snippetClass).take(900)
             hits.putIfAbsent(target, WebSearchHit(title, target, snippet))
@@ -333,7 +337,7 @@ internal object WebHtmlParser {
             .find(html)?.groupValues?.get(1)?.let(::stripHtml).orEmpty().take(300)
 
         val source = listOf("article", "main", "body").firstNotNullOfOrNull { tag ->
-            Regex("""(?is)<${tag\b[^>]*>(.*?)</${tag\s*>""")
+            Regex("""(?is)<${tag}\b[^>]*>(.*?)</${tag}\s*>""")
                 .find(html)?.groupValues?.get(1)
         } ?: html
         return title to stripHtml(source)
@@ -362,7 +366,7 @@ internal object WebHtmlParser {
     }
 
     private fun attribute(attributes: String, name: String): String? {
-        val pattern = Regex("""(?is)\b${Regex.escape(name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
+        val pattern = Regex("""(?is)\b${Regex.escape(name)}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
         val match = pattern.find(attributes) ?: return null
         return (1..3).firstNotNullOfOrNull { match.groups[it]?.value }?.let(::decodeHtml)
     }
