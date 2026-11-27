@@ -6,8 +6,8 @@
 |---|---|---|---|---|
 | OpenAI | Responses API | GET /v1/models | Native function tools | reasoning.effort when enabled |
 | OpenAI-compatible | POST /v1/chat/completions | GET /v1/models | Function/tool calls when supported by server | reasoning_effort when enabled |
-| Anthropic | POST /v1/messages | GET /v1/models | tool_use / tool_result | Extended thinking for compatible models when enabled |
-| Google Gemini | generateContent | GET /v1beta/models | Function calling | thinkingConfig when enabled |
+| Anthropic | POST /v1/messages | GET /v1/models | tool_use / tool_result | Adaptive thinking + output_config.effort on current models; legacy budget_tokens for older models |
+| Google Gemini | generateContent | GET /v1beta/models | Function calling | thinkingLevel on Gemini 3+; thinkingBudget on Gemini 2.5 and earlier |
 | Ollama | OpenAI-compatible chat endpoint | GET /api/tags | Depends on model and Ollama version | Provider/model dependent |
 
 ## Connection setup
@@ -17,7 +17,7 @@
 3. Enter its base URL and exact model ID. Use the model discovery button to test connectivity and populate the model list.
 4. Enter the API key for hosted services. Leave it empty for a local Ollama server without authentication.
 5. Save the provider and set it as active in the Agent section.
-6. Choose Fast, Balanced or Deep reasoning. Enable native reasoning only when the selected model supports it.
+6. Choose Fast, Balanced or Deep reasoning. Native reasoning is off by default. Enable it only when the selected model documents support for the provider's reasoning parameters.
 
 Hosted service API keys are created and managed in the relevant provider account. Aidroid stores a supplied key encrypted using Android Keystore. It is not uploaded to Firebase.
 
@@ -40,9 +40,9 @@ Then use the model discovery button. Do not enter 127.0.0.1 for another computer
 
 ## llama.cpp server and GGUF
 
-A running llama.cpp server exposes OpenAI-compatible endpoints. Choose OpenAI-compatible API, use the server's address (commonly port 9931 when using the documented server defaults), and discover or enter the model ID exposed by /v1/models.
+A running llama.cpp server exposes OpenAI-compatible endpoints. Choose OpenAI-compatible API, use the server's address (commonly port 8080 by default (or the port configured at startup)), and discover or enter the model ID exposed by /v1/models.
 
-This connects to a model already loaded by a server. It does not download a GGUF file or embed the llama.cpp runtime in the Android app. Direct on-device GGUF support is a separate native Android milestone.
+The reasoning toggle is intentionally opt-in because reasoning parameters differ between model families. Gemini 3+ uses thinkingLevel, while Gemini 2.5 and earlier use thinkingBudget. Current Claude models use adaptive thinking with output_config.effort; legacy Claude models use the older thinking budget format.\n\nThis connects to a model already loaded by a server. It does not download a GGUF file or embed the llama.cpp runtime in the Android app. Direct on-device GGUF support is a separate native Android milestone.
 
 ## Agent tools
 
