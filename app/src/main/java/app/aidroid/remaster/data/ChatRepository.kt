@@ -72,14 +72,23 @@ class ChatRepository(
 
     suspend fun delete(chat: ChatEntity) {
         // Keep a tombstone so a deletion is propagated to the user's other devices.
+        val storedAttachments = dao.getMessages(chat.id)
+            .flatMap { AttachmentJson.decode(it.attachmentsJson) }
         dao.softDeleteChat(chat.id, System.currentTimeMillis())
         syncCloudSafely()
+        withContext(Dispatchers.IO) {
+            storedAttachments.forEach(attachmentStorage::delete)
+        }
     }
 
     suspend fun deleteMessage(message: MessageEntity) {
         // Message tombstones prevent deleted messages from reappearing during cloud merge.
+        val storedAttachments = AttachmentJson.decode(message.attachmentsJson)
         dao.softDeleteMessage(message.id, System.currentTimeMillis())
         syncCloudSafely()
+        withContext(Dispatchers.IO) {
+            storedAttachments.forEach(attachmentStorage::delete)
+        }
     }
 
     suspend fun getChat(chatId: Long): ChatEntity? = dao.getChat(chatId)
