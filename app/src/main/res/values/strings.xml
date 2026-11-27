@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Set this to the OAuth 2.0 Web application client ID from Google Cloud Console. -->
+    <!-- OAuth 2.0 Web application client ID used by Credential Manager. -->
     <string name="google_web_client_id" translatable="false"></string>
+
+    <!-- Firebase Android app configuration. Fill these from Firebase project settings. -->
+    <string name="firebase_api_key" translatable="false"></string>
+    <string name="firebase_application_id" translatable="false"></string>
+    <string name="firebase_project_id" translatable="false"></string>
+    <string name="firebase_storage_bucket" translatable="false"></string>
 </resources>
