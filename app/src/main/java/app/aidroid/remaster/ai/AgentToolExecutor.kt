@@ -12,8 +12,8 @@ import okhttp3.OkHttpClient
 import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.InterruptedIOException
 import java.net.URLEncoder
-import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -512,7 +512,7 @@ class AgentToolExecutor(
         return try {
             request()
         } catch (error: Exception) {
-            val causes = generateSequence(error) { it.cause }.take(8).toList()
+            val causes = generateSequence<Throwable>(error) { it.cause }.take(8).toList()
             val details = causes.mapNotNull { it.message }.joinToString(" · ").take(900)
             val unsupportedFeature = causes.any {
                 val value = it.message.orEmpty()
@@ -527,7 +527,7 @@ class AgentToolExecutor(
                     error
                 )
             }
-            if (causes.any { it is SocketTimeoutException }) {
+            if (causes.any { it is InterruptedIOException }) {
                 throw IllegalStateException(
                     "Истекло время ожидания при ${operation} изображения через «${provider.name}». " +
                         "Сервер мог начать обработку, но ответ не успел вернуться. Автоматический повтор отключён, " +
