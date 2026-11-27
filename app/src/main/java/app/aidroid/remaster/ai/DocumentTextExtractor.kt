@@ -21,6 +21,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
         val extension = attachment.displayName.substringAfterLast('.', "").lowercase()
         val extracted = when {
             extension == "pdf" || attachment.mimeType == "application/pdf" -> extractPdf(file)
+            extension == "zip" || attachment.mimeType in ZIP_MIME_TYPES -> extractZipArchive(file)
             extension in OFFICE_EXTENSIONS -> extractOffice(file, extension)
             extension in TEXT_EXTENSIONS || attachment.mimeType.startsWith("text/") -> {
                 val text = readText(file)
@@ -31,7 +32,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
                 }
             }
             else -> throw IllegalArgumentException(
-                "Формат .$extension пока не поддерживается для чтения. Поддерживаются PDF, DOCX, XLSX, PPTX, TXT, MD, CSV, JSON, XML и HTML."
+                "Формат .$extension пока не поддерживается для чтения. Поддерживаются ZIP (текстовые файлы внутри), PDF, DOCX, XLSX, PPTX, TXT, MD, CSV, JSON, XML и HTML."
             )
         }
         return extracted.trim().take(MAX_EXTRACTED_CHARS)
@@ -39,6 +40,75 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
 
     private fun readText(file: File): String =
         file.inputStream().bufferedReader(Charsets.UTF_8).use { it.readText().take(MAX_EXTRACTED_CHARS) }
+
+    private fun extractZipArchive(file: File): String =
+        ZipFile(file).use { zip ->
+            val candidates = zip.entries().asSequence()
+                .filter { !it.isDirectory && isSupportedArchiveTextFile(it.name) }
+                .take(MAX_ARCHIVE_ENTRIES)
+                .toList()
+            require(candidates.isNotEmpty()) {
+                "В ZIP не найдено поддерживаемых текстовых файлов. Можно прочитать TXT, MD, CSV, JSON, XML, HTML и исходный код."
+            }
+
+            var totalBytesRead = 0
+            buildString {
+                for (entry in candidates) {
+                    if (length >= MAX_EXTRACTED_CHARS || totalBytesRead >= MAX_ARCHIVE_TOTAL_BYTES) break
+                    if (entry.size > MAX_ARCHIVE_ENTRY_BYTES) continue
+                    val remainingBytes = minOf(
+                        MAX_ARCHIVE_ENTRY_BYTES,
+                        MAX_ARCHIVE_TOTAL_BYTES - totalBytesRead
+                    )
+                    val bytes = zip.getInputStream(entry).use { input ->
+                        readBoundedArchiveEntry(input, remainingBytes)
+                    } ?: continue
+                    if (bytes.isEmpty() || !looksLikeText(bytes)) continue
+
+                    totalBytesRead += bytes.size
+                    val rawText = String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
+                    val extension = entry.name.substringAfterLast('.', "").lowercase()
+                    val text = if (extension in HTML_EXTENSIONS) extractHtmlText(rawText) else rawText
+                    if (text.isBlank()) continue
+
+                    if (isNotEmpty()) append("\n\n")
+                    append("[Файл в архиве: ")
+                        .append(entry.name.replace(Regex("[\\r\\n\\p{Cntrl}]"), " ").take(180))
+                        .append("]\n")
+                    append(text.take((MAX_EXTRACTED_CHARS - length).coerceAtLeast(0)))
+                }
+            }.also { extracted ->
+                require(extracted.isNotBlank()) {
+                    "В ZIP найдены файлы, но внутри нет читаемого текста."
+                }
+            }
+        }
+
+    private fun isSupportedArchiveTextFile(name: String): Boolean {
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return extension in ARCHIVE_TEXT_EXTENSIONS
+    }
+
+    private fun readBoundedArchiveEntry(input: InputStream, maxBytes: Int): ByteArray? {
+        val output = java.io.ByteArrayOutputStream(minOf(maxBytes, 8_192))
+        val buffer = ByteArray(8_192)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) return output.toByteArray()
+            if (output.size() + count > maxBytes) return null
+            output.write(buffer, 0, count)
+        }
+    }
+
+    private fun looksLikeText(bytes: ByteArray): Boolean {
+        val sampleSize = minOf(bytes.size, 4_096)
+        if (sampleSize == 0) return false
+        val controlBytes = bytes.take(sampleSize).count { value ->
+            val code = value.toInt() and 0xff
+            code == 0 || (code < 32 && code !in setOf(9, 10, 13))
+        }
+        return controlBytes <= sampleSize / 20
+    }
 
     private fun extractHtmlText(input: String): String {
         var text = input
@@ -253,6 +323,15 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
         private const val MAX_EXTRACTED_CHARS = 24_000
         private const val MAX_PDF_PAGES = 35
         private const val MAX_OFFICE_ENTRIES = 200
+        private const val MAX_ARCHIVE_ENTRIES = 100
+        private const val MAX_ARCHIVE_ENTRY_BYTES = 512 * 1024
+        private const val MAX_ARCHIVE_TOTAL_BYTES = 3 * 1024 * 1024
+        private val ZIP_MIME_TYPES = setOf("application/zip", "application/x-zip-compressed")
+        private val ARCHIVE_TEXT_EXTENSIONS = setOf(
+            "txt", "md", "csv", "tsv", "json", "xml", "html", "htm", "log",
+            "kt", "kts", "java", "js", "ts", "tsx", "jsx", "py", "gradle",
+            "properties", "yaml", "yml", "toml", "sql", "sh", "css", "html"
+        )
         private val TEXT_EXTENSIONS = setOf("txt", "md", "csv", "tsv", "json", "xml", "html", "htm", "log")
         private val HTML_EXTENSIONS = setOf("html", "htm")
         private val OFFICE_EXTENSIONS = setOf("docx", "xlsx", "pptx")
