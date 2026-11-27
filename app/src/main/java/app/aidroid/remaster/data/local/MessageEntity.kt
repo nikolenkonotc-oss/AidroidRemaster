@@ -5,6 +5,7 @@ import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 @Entity(
     tableName = "messages",
@@ -16,7 +17,11 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("chatId"), Index(value = ["chatId", "createdAt"])]
+    indices = [
+        Index("chatId"),
+        Index(value = ["chatId", "createdAt"]),
+        Index(value = ["syncId"], unique = true)
+    ]
 )
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -24,5 +29,7 @@ data class MessageEntity(
     val role: String,
     val content: String,
     val createdAt: Long,
-    @ColumnInfo(defaultValue = "'[]'") val attachmentsJson: String = "[]"
+    @ColumnInfo(defaultValue = "'[]'") val attachmentsJson: String = "[]",
+    @ColumnInfo(defaultValue = "''") val syncId: String = UUID.randomUUID().toString(),
+    val deletedAt: Long? = null
 )
