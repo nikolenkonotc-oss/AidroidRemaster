@@ -1206,75 +1206,104 @@ private fun ChatListScreen(
                     strokeWidth = 2.5.dp
                 )
             }
-        } else if (filtered.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(11.dp)
-                    ) {
-                        Box(
-                            Modifier.size(76.dp)
-                                .shadow(18.dp, CircleShape, clip = false)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-                                        )
-                                    )
-                                )
-                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                if (query.isBlank()) Icons.Filled.AutoAwesome else Icons.Filled.SearchOff,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(34.dp)
+        } else {
+            AnimatedContent(
+                targetState = archived,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                transitionSpec = {
+                    (fadeIn(tween(280, easing = FastOutSlowInEasing)) +
+                        slideInVertically(
+                            initialOffsetY = { height -> height / 12 },
+                            animationSpec = tween(280, easing = FastOutSlowInEasing)
+                        ) +
+                        scaleIn(
+                            initialScale = 0.965f,
+                            animationSpec = tween(280, easing = FastOutSlowInEasing)
+                        )).togetherWith(
+                        fadeOut(tween(150, easing = FastOutSlowInEasing)) +
+                            slideOutVertically(
+                                targetOffsetY = { height -> -height / 18 },
+                                animationSpec = tween(150, easing = FastOutSlowInEasing)
+                            ) +
+                            scaleOut(
+                                targetScale = 0.985f,
+                                animationSpec = tween(150, easing = FastOutSlowInEasing)
                             )
-                        }
-                        Text(
-                            if (query.isBlank()) "Твоё пространство диалогов" else "Ничего не найдено",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            if (query.isBlank()) {
-                                "Создай новый чат — история и контекст будут храниться на устройстве."
-                            } else {
-                                "Попробуй изменить поисковый запрос."
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        if (query.isBlank() && !archived) {
-                            Spacer(Modifier.height(2.dp))
-                            GlowButton("Создать первый чат", onCreate)
+                    )
+                },
+                label = "chat-list-body-transition"
+            ) { showArchive ->
+                if (filtered.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(11.dp)
+                            ) {
+                                Box(
+                                    Modifier.size(76.dp)
+                                        .shadow(18.dp, CircleShape, clip = false)
+                                        .clip(CircleShape)
+                                        .background(
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                                                )
+                                            )
+                                        )
+                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        if (query.isBlank()) Icons.Filled.AutoAwesome else Icons.Filled.SearchOff,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(34.dp)
+                                    )
+                                }
+                                Text(
+                                    if (query.isBlank()) "Твоё пространство диалогов" else "Ничего не найдено",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                                Text(
+                                    if (query.isBlank()) {
+                                        "Создай новый чат — история и контекст будут храниться на устройстве."
+                                    } else {
+                                        "Попробуй изменить поисковый запрос."
+                                    },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                if (query.isBlank() && !showArchive) {
+                                    Spacer(Modifier.height(2.dp))
+                                    GlowButton("Создать первый чат", onCreate)
+                                }
+                            }
                         }
                     }
-                }
-            }
-        } else {
-            LazyColumn(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
-            ) {
-                items(filtered, key = { it.id }) { chat ->
-                    Box(Modifier.fillMaxWidth().animateItem()) {
-                        ChatListItem(
-                            chat,
-                            onOpen = { onOpen(chat.id) },
-                            onRename = { renameTarget = chat },
-                            onPin = { onPin(chat) },
-                            onArchive = { onArchive(chat) },
-                            onDelete = { deleteTarget = chat }
-                        )
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
+                    ) {
+                        items(filtered, key = { it.id }) { chat ->
+                            Box(Modifier.fillMaxWidth().animateItem()) {
+                                ChatListItem(
+                                    chat,
+                                    onOpen = { onOpen(chat.id) },
+                                    onRename = { renameTarget = chat },
+                                    onPin = { onPin(chat) },
+                                    onArchive = { onArchive(chat) },
+                                    onDelete = { onDelete(chat) }
+                                )
+                            }
+                        }
                     }
                 }
             }
