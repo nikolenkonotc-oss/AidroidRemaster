@@ -25,6 +25,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -133,6 +134,9 @@ import app.aidroid.remaster.data.local.AidroidDatabase
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
@@ -185,12 +189,18 @@ class MainActivity : ComponentActivity() {
         val repository = ChatRepository(database.chatDao(), attachmentStorage, cloudSync)
         val providerManager = ProviderManager(applicationContext)
         val agentRunner = AgentRunner(applicationContext, providerManager, database.chatDao(), repository, attachmentStorage)
-        setContent { AidroidApp(repository, cloudSync, providerManager, agentRunner) }
+        setContent { AidroidApp(repository, cloudSync, providerManager, agentRunner, lifecycleScope) }
     }
 }
 
 @Composable
-private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync, providerManager: ProviderManager, agentRunner: AgentRunner) {
+private fun AidroidApp(
+    repository: ChatRepository,
+    cloudSync: FirebaseCloudSync,
+    providerManager: ProviderManager,
+    agentRunner: AgentRunner,
+    agentTaskScope: CoroutineScope
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val themePreferences = remember(context) {
         context.getSharedPreferences("aidroid_remaster_preferences", Context.MODE_PRIVATE)
@@ -348,6 +358,7 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync,
                             Screen.CHAT -> ChatWorkspace(
                                 repository = repository,
                                 agentRunner = agentRunner,
+                                agentTaskScope = agentTaskScope,
                                 chatLists = chatLists,
                                 selectedChatId = selectedChatId,
                                 onSelectChat = { selectedChatId = it },
@@ -920,6 +931,7 @@ private fun AidroidBottomBar(selectedScreen: Screen, onSelect: (Screen) -> Unit)
 private fun ChatWorkspace(
     repository: ChatRepository,
     agentRunner: AgentRunner,
+    agentTaskScope: CoroutineScope,
     chatLists: Pair<List<ChatEntity>, List<ChatEntity>>?,
     selectedChatId: Long?,
     onSelectChat: (Long?) -> Unit,
@@ -1050,8 +1062,13 @@ private fun ChatWorkspace(
                     messages = if (destinationChatId == selectedChatId) messages else null,
                     onBack = onBackToChats,
                     onSend = { text, attachments ->
-                        repository.sendUserMessage(destinationChat.id, text, attachments)
-                        agentRunner.respondToChat(destinationChat.id)
+                        // This task belongs to the Activity, not the chat screen composition.
+                        // Switching to Settings/Models must not cancel an in-flight agent response.
+                        agentTaskScope.async {
+                            repository.sendUserMessage(destinationChat.id, text, attachments)
+                            agentRunner.respondToChat(destinationChat.id)
+                            Unit
+                        }
                     },
                     onDeleteMessage = { message -> repository.deleteMessage(message) },
                     onRename = { title -> scope.launch { repository.rename(destinationChat.id, title) } }
@@ -1568,7 +1585,7 @@ private fun ConversationScreen(
     chat: ChatEntity,
     messages: List<MessageEntity>?,
     onBack: () -> Unit,
-    onSend: suspend (String, List<StoredAttachment>) -> Unit,
+    onSend: (String, List<StoredAttachment>) -> Deferred<Unit>,
     onDeleteMessage: suspend (MessageEntity) -> Unit,
     onRename: (String) -> Unit
 ) {
@@ -1595,6 +1612,7 @@ private fun ConversationScreen(
     var pendingAgentRequests by remember(chat.id) { mutableIntStateOf(0) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
+    val activeAgentChatIds by agentRunner.activeChatIds.collectAsState()
 
     fun showNotice(message: String) {
         scope.launch {
@@ -1819,10 +1837,18 @@ private fun ConversationScreen(
         localText = ""
         pendingAttachments.clear()
         attachmentError = null
+        val task = try {
+            // Start the send/agent task synchronously in the Activity scope before this
+            // screen can be disposed by navigation.
+            onSend(text, attachments)
+        } catch (error: Exception) {
+            attachmentError = "Не удалось запустить запрос: ${error.message ?: "попробуй ещё раз"}"
+            return
+        }
         pendingAgentRequests++
         scope.launch {
             try {
-                onSend(text, attachments)
+                task.await()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -2145,7 +2171,7 @@ private fun ConversationScreen(
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 AnimatedVisibility(
-                    visible = pendingAgentRequests > 0,
+                    visible = pendingAgentRequests > 0 || chat.id in activeAgentChatIds,
                     enter = fadeIn(tween(160)) + expandVertically(tween(180)),
                     exit = fadeOut(tween(110)) + shrinkVertically(tween(140))
                 ) {
@@ -2156,7 +2182,7 @@ private fun ConversationScreen(
                     ) {
                         CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
                         Text(
-                            if (pendingAgentRequests == 1) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
+                            if (pendingAgentRequests == 1 || chat.id in activeAgentChatIds) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
                             color = MaterialTheme.colorScheme.secondary,
                             style = MaterialTheme.typography.labelMedium
                         )
