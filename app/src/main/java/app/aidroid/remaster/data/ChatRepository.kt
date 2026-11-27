@@ -77,6 +77,22 @@ class ChatRepository(
         requestCloudSync()
     }
 
+    suspend fun addAssistantMessage(chatId: Long, content: String) {
+        val clean = content.trim()
+        if (clean.isBlank()) return
+        val now = System.currentTimeMillis()
+        dao.insertMessage(
+            MessageEntity(
+                chatId = chatId,
+                role = "assistant",
+                content = clean,
+                createdAt = now
+            )
+        )
+        dao.touchChat(chatId, now)
+        requestCloudSync()
+    }
+
     suspend fun rename(chatId: Long, title: String) {
         val clean = title.trim()
         if (clean.isNotEmpty()) {
