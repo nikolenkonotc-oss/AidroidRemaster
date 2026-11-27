@@ -53,9 +53,11 @@ class FirebaseCloudSync(context: Context) {
         }
     }.getOrNull()
 
-    private val auth: FirebaseAuth? = firebaseApp?.let(FirebaseAuth::getInstance)
-    private val firestore: FirebaseFirestore? = firebaseApp?.let(FirebaseFirestore::getInstance)
-    private val storage: FirebaseStorage? = firebaseApp?.let(FirebaseStorage::getInstance)
+    private val auth: FirebaseAuth? = firebaseApp?.let { FirebaseAuth.getInstance(it) }
+    private val firestore: FirebaseFirestore? = firebaseApp?.let { FirebaseFirestore.getInstance(it) }
+    private val storage: FirebaseStorage? = firebaseApp?.let { app ->
+        app.options.storageBucket?.takeIf { it.isNotBlank() }?.let { FirebaseStorage.getInstance(app) }
+    }
 
     val isConfigured: Boolean get() = firebaseApp != null
     val isSignedIn: Boolean get() = auth?.currentUser != null
