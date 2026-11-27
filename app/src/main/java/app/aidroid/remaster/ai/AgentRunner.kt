@@ -129,7 +129,7 @@ class AgentRunner(
                     }.fold(
                         onSuccess = { it },
                         onFailure = { error ->
-                            AgentToolResult("Ошибка инструмента: ${error.message ?: "неизвестная ошибка"}")
+                            AgentToolResult("Ошибка инструмента: ${describeFailure(error).trim()}")
                         }
                     )
 
