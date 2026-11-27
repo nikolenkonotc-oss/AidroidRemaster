@@ -35,8 +35,27 @@ data class ProviderConfig(
 data class AgentPreferences(
     val activeProviderId: String? = null,
     val reasoningMode: ReasoningMode = ReasoningMode.BALANCED,
-    val enabledTools: List<String> = listOf("calculator", "current_datetime"),
-    val systemPrompt: String = ""
+    val enabledTools: List<String> = listOf(
+        "calculator",
+        "current_datetime",
+        "web_search",
+        "image_analysis",
+        "file_analysis",
+        "image_generation",
+        "code_execution",
+        "email_draft",
+        "calendar_event",
+        "voice_input",
+        "voice_output"
+    ),
+    val systemPrompt: String = "",
+    val codeRunnerUrl: String = ""
+)
+
+data class LlmImageAttachment(
+    val name: String,
+    val mimeType: String,
+    val base64: String
 )
 
 data class LlmMessage(
@@ -45,7 +64,8 @@ data class LlmMessage(
     val toolCalls: List<LlmToolCall> = emptyList(),
     val toolCallId: String? = null,
     val name: String? = null,
-    val providerContent: JsonArray? = null
+    val providerContent: JsonArray? = null,
+    val images: List<LlmImageAttachment> = emptyList()
 )
 
 data class LlmToolCall(
@@ -77,4 +97,27 @@ data class LlmResponse(
 data class AvailableModel(
     val id: String,
     val displayName: String = id
+)
+
+enum class AgentActionType {
+    EMAIL_DRAFT,
+    CALENDAR_EVENT
+}
+
+data class AgentExternalAction(
+    val id: String,
+    val type: AgentActionType,
+    val title: String,
+    val recipient: String = "",
+    val subject: String = "",
+    val body: String = "",
+    val startIso: String = "",
+    val endIso: String = "",
+    val location: String = ""
+)
+
+data class AgentToolResult(
+    val text: String,
+    val attachments: List<app.aidroid.remaster.data.attachments.StoredAttachment> = emptyList(),
+    val action: AgentExternalAction? = null
 )
