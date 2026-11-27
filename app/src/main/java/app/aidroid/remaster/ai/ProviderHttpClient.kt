@@ -85,10 +85,24 @@ class ProviderHttpClient {
                         put("output", message.content)
                     })
                 } else {
-                    if (message.content.isNotBlank()) {
+                    if (message.content.isNotBlank() || message.images.isNotEmpty()) {
                         add(buildJsonObject {
                             put("role", message.role)
-                            put("content", message.content)
+                            if (message.images.isEmpty()) put("content", message.content)
+                            else put("content", buildJsonArray {
+                                if (message.content.isNotBlank()) {
+                                    add(buildJsonObject {
+                                        put("type", "input_text")
+                                        put("text", message.content)
+                                    })
+                                }
+                                message.images.forEach { image ->
+                                    add(buildJsonObject {
+                                        put("type", "input_image")
+                                        put("image_url", "data:${image.mimeType};base64,${image.base64}")
+                                    })
+                                }
+                            })
                         })
                     }
                     message.toolCalls.forEach { call ->
@@ -153,7 +167,24 @@ class ProviderHttpClient {
             request.messages.forEach { message ->
                 add(buildJsonObject {
                     put("role", message.role)
-                    if (message.content.isNotBlank()) put("content", message.content)
+                    if (message.images.isNotEmpty()) {
+                        put("content", buildJsonArray {
+                            if (message.content.isNotBlank()) {
+                                add(buildJsonObject { put("type", "text"); put("text", message.content) })
+                            }
+                            message.images.forEach { image ->
+                                add(buildJsonObject {
+                                    put("type", "image_url")
+                                    putJsonObject("image_url") {
+                                        put("url", "data:${image.mimeType};base64,${image.base64}")
+                                        put("detail", "auto")
+                                    }
+                                })
+                            }
+                        })
+                    } else if (message.content.isNotBlank()) {
+                        put("content", message.content)
+                    }
                     if (message.name != null) put("name", message.name)
                     if (message.toolCallId != null) put("tool_call_id", message.toolCallId)
                     if (message.toolCalls.isNotEmpty()) {
@@ -255,7 +286,27 @@ class ProviderHttpClient {
                                     }
                                 }
                             }
-                            else -> put("content", message.content)
+                            else -> {
+                                if (message.images.isEmpty()) {
+                                    put("content", message.content)
+                                } else {
+                                    putJsonArray("content") {
+                                        if (message.content.isNotBlank()) {
+                                            add(buildJsonObject { put("type", "text"); put("text", message.content) })
+                                        }
+                                        message.images.forEach { image ->
+                                            add(buildJsonObject {
+                                                put("type", "image")
+                                                putJsonObject("source") {
+                                                    put("type", "base64")
+                                                    put("media_type", image.mimeType)
+                                                    put("data", image.base64)
+                                                }
+                                            })
+                                        }
+                                    }
+                                }
+                            }
                         }
                     })
                     index++
@@ -340,6 +391,14 @@ class ProviderHttpClient {
                         else -> {
                             putJsonArray("parts") {
                                 if (message.content.isNotBlank()) add(buildJsonObject { put("text", message.content) })
+                                message.images.forEach { image ->
+                                    add(buildJsonObject {
+                                        putJsonObject("inlineData") {
+                                            put("mimeType", image.mimeType)
+                                            put("data", image.base64)
+                                        }
+                                    })
+                                }
                                 message.toolCalls.forEach { call ->
                                     add(buildJsonObject {
                                         putJsonObject("functionCall") {
