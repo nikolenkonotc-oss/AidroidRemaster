@@ -37,6 +37,30 @@ class WebResearchEngineTest {
     }
 
     @Test
+    fun parsesWikipediaSearchApiResults() {
+        val json = """
+            {
+              "query": {
+                "search": [
+                  {
+                    "pageid": 12345,
+                    "title": "Grand Theft Auto VI",
+                    "snippet": "An upcoming <span class="searchmatch">video game</span>."
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val result = WebHtmlParser.parseWikipediaSearch(json, "en").single()
+
+        assertEquals("Grand Theft Auto VI", result.title)
+        assertEquals("https://en.wikipedia.org/?curid=12345", result.url)
+        assertEquals("An upcoming video game.", result.snippet)
+        assertEquals("Wikipedia (en)", result.source)
+    }
+
+    @Test
     fun parsesGoogleNewsRssItemsAndCdata() {
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
