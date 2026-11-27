@@ -13,6 +13,7 @@ import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
+import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -28,6 +29,14 @@ class AgentToolExecutor(
         .readTimeout(25, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .callTimeout(35, TimeUnit.SECONDS)
+        .build()
+    // Image generation/edit can take much longer than ordinary tool calls.
+    // Keep it separate so a long render does not relax timeouts for every tool.
+    private val imageHttp = http.newBuilder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(210, TimeUnit.SECONDS)
         .build()
     private val json = Json { ignoreUnknownKeys = true }
     private val documentExtractor = DocumentTextExtractor(appContext, attachmentStorage)
@@ -179,11 +188,15 @@ class AgentToolExecutor(
             put("quality", "medium")
             put("output_format", "png")
         }
-        val response = postJson(openAiEndpoint(provider.baseUrl, "/images/generations"), payload, mapOf("Authorization" to "Bearer $apiKey"))
-        val encoded = response["data"]?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("b64_json")?.jsonPrimitive?.contentOrNull
-            ?: throw IllegalStateException("API генерации не вернул изображение.")
-        val imageBytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        val response = imageApiRequest(provider, "генерации") {
+            postJson(
+                openAiEndpoint(provider.baseUrl, "/images/generations"),
+                payload,
+                mapOf("Authorization" to "Bearer $apiKey"),
+                client = imageHttp
+            )
+        }
+        val imageBytes = decodeImageResult(response, "генерации")
         val attachment = attachmentStorage.saveGeneratedImage(imageBytes, "aidroid_generated")
         AgentToolResult(
             text = "Изображение создано и добавлено к ответу. Его можно открыть прямо в чате.",
@@ -235,11 +248,10 @@ class AgentToolExecutor(
             .header("Authorization", "Bearer $apiKey")
             .post(requestBody)
             .build()
-        val response = executeJson(request)
-        val encoded = response["data"]?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("b64_json")?.jsonPrimitive?.contentOrNull
-            ?: throw IllegalStateException("API редактирования не вернул изображение.")
-        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        val response = imageApiRequest(provider, "редактирования") {
+            executeJson(request, imageHttp)
+        }
+        val bytes = decodeImageResult(response, "редактирования")
         val attachment = attachmentStorage.saveGeneratedImage(bytes, "aidroid_edited")
         AgentToolResult(
             text = "Изображение отредактировано. Новая версия прикреплена к ответу; исходник не изменён.",
@@ -398,15 +410,20 @@ class AgentToolExecutor(
     )
 
     private fun imageProvider(): ProviderConfig? {
-        val candidates = providers.providers().filter {
-            it.type in setOf(ProviderType.OPENAI, ProviderType.OPENAI_COMPATIBLE) &&
-                !providers.apiKey(it.id).isNullOrBlank()
+        val candidates = providers.providers().filter { provider ->
+            provider.enabled &&
+                provider.type in setOf(ProviderType.OPENAI, ProviderType.OPENAI_COMPATIBLE) &&
+                (provider.type == ProviderType.OPENAI || provider.supportsImageApi) &&
+                !providers.apiKey(provider.id).isNullOrBlank()
         }
+        val selectedId = providers.agentPreferences().imageProviderId
+        if (selectedId != null) return candidates.firstOrNull { it.id == selectedId }
+
+        // Automatic selection is deterministic: active, explicitly image-capable endpoint first;
+        // otherwise direct OpenAI. Never assume every OpenAI-compatible chat gateway has Images API.
         val activeId = providers.activeProvider()?.id
-        return candidates.firstOrNull { it.id == activeId && it.type == ProviderType.OPENAI }
+        return candidates.firstOrNull { it.id == activeId }
             ?: candidates.firstOrNull { it.type == ProviderType.OPENAI }
-            ?: candidates.firstOrNull { it.id == activeId }
-            ?: candidates.firstOrNull()
     }
 
     private fun openAiEndpoint(baseUrl: String, path: String): String {
@@ -414,18 +431,24 @@ class AgentToolExecutor(
         return if (root.endsWith("/v1")) "$root$path" else "$root/v1$path"
     }
 
-    private fun postJson(url: String, payload: JsonObject, headers: Map<String, String> = emptyMap()): JsonObject {
+    private fun postJson(
+        url: String,
+        payload: JsonObject,
+        headers: Map<String, String> = emptyMap(),
+        client: OkHttpClient = http
+    ): JsonObject {
         val request = Request.Builder().url(url).apply {
             headers.forEach { (name, value) -> header(name, value) }
             post(Json.encodeToString(payload).toRequestBody(JSON_MEDIA_TYPE))
         }.build()
-        return executeJson(request)
+        return executeJson(request, client)
     }
 
-    private fun executeJson(request: Request): JsonObject = executeJsonElement(request).jsonObject
+    private fun executeJson(request: Request, client: OkHttpClient = http): JsonObject =
+        executeJsonElement(request, client).jsonObject
 
-    private fun executeJsonElement(request: Request): JsonElement {
-        http.newCall(request).execute().use { response ->
+    private fun executeJsonElement(request: Request, client: OkHttpClient = http): JsonElement {
+        client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val errorFields = runCatching {
@@ -462,6 +485,66 @@ class AgentToolExecutor(
             return runCatching { json.parseToJsonElement(body) }
                 .getOrElse { throw IllegalStateException("Сервис инструмента вернул некорректный JSON (HTTP ${response.code}).") }
         }
+    }
+
+    private fun imageApiRequest(
+        provider: ProviderConfig,
+        operation: String,
+        request: () -> JsonObject
+    ): JsonObject {
+        return try {
+            request()
+        } catch (error: Exception) {
+            val causes = generateSequence(error) { it.cause }.take(8).toList()
+            val details = causes.mapNotNull { it.message }.joinToString(" · ").take(900)
+            val unsupportedFeature = causes.any {
+                val value = it.message.orEmpty()
+                value.contains("unsupported_feature", ignoreCase = true) ||
+                    value.contains("unsupported feature", ignoreCase = true)
+            }
+            if (unsupportedFeature) {
+                throw IllegalStateException(
+                    "Провайдер «${provider.name}» не поддерживает Image API на этом endpoint. " +
+                        "Совместимость с OpenAI Chat API не означает поддержку /v1/images/generations и /v1/images/edits. " +
+                        "Выбери прямой OpenAI или шлюз с поддержкой Images API. Ответ сервера: ${details.ifBlank { "unsupported_feature" }}",
+                    error
+                )
+            }
+            if (causes.any { it is SocketTimeoutException }) {
+                throw IllegalStateException(
+                    "Истекло время ожидания при ${operation} изображения через «${provider.name}». " +
+                        "Сервер мог начать обработку, но ответ не успел вернуться. Автоматический повтор отключён, " +
+                        "чтобы не создавать дублирующий запрос; проверь результат на стороне провайдера перед повторной отправкой. " +
+                        details,
+                    error
+                )
+            }
+            throw IllegalStateException(
+                "Не удалось выполнить ${operation} изображения через «${provider.name}»: ${details.ifBlank { "неизвестная ошибка API" }}",
+                error
+            )
+        }
+    }
+
+    private fun decodeImageResult(response: JsonObject, operation: String): ByteArray {
+        val data = response["data"]?.jsonArray?.firstOrNull()?.jsonObject
+        val encoded = data?.get("b64_json")?.jsonPrimitive?.contentOrNull
+        if (encoded.isNullOrBlank()) {
+            val error = response["error"]?.let { value ->
+                (value as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: value.jsonPrimitive.contentOrNull
+            }
+            val fields = data?.keys?.joinToString(", ").orEmpty()
+            throw IllegalStateException(
+                "API ${operation} вернул успешный HTTP-ответ, но не вернул data[0].b64_json." +
+                    (error?.let { " Сообщение: ${it.take(500)}." } ?: "") +
+                    (fields.takeIf { it.isNotBlank() }?.let { " Поля результата: ${it}." } ?: "")
+            )
+        }
+        val bytes = runCatching { android.util.Base64.decode(encoded, android.util.Base64.DEFAULT) }
+            .getOrElse { throw IllegalStateException("API ${operation} вернул повреждённые данные изображения.", it) }
+        require(bytes.isNotEmpty()) { "API ${operation} вернул пустое изображение." }
+        return bytes
     }
 
     private fun JsonObject.string(key: String): String =
