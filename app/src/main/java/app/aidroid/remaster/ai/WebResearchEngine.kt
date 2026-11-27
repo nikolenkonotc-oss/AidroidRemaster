@@ -236,7 +236,7 @@ class WebResearchEngine {
             val scheme = uri.scheme?.lowercase(Locale.ROOT)
             require(scheme == "https" || scheme == "http") { "Разрешены только HTTP- и HTTPS-страницы." }
             require(uri.rawUserInfo.isNullOrBlank()) { "Ссылки с логином или паролем запрещены." }
-            val rawHost = uri.host?.removePrefix("[").removeSuffix("]")
+            val rawHost = uri.host?.removePrefix("[")?.removeSuffix("]")
                 ?: throw IllegalArgumentException("В ссылке не найден домен.")
             val host = if (rawHost.contains(':')) rawHost.lowercase(Locale.ROOT)
                 else IDN.toASCII(rawHost).lowercase(Locale.ROOT)
