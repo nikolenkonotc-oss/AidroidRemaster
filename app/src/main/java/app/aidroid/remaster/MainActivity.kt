@@ -134,6 +134,7 @@ import app.aidroid.remaster.data.attachments.StoredAttachment
 import app.aidroid.remaster.data.local.AidroidDatabase
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
+import app.aidroid.remaster.ui.fixedDimensionScale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -148,6 +149,8 @@ import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.launch
+
+private const val MESSAGE_PRESS_SHRINK_DP = 3f
 
 private val Violet = Color(0xFF9270F5)
 private val VioletBright = Color(0xFFB69AFF)
@@ -1591,6 +1594,9 @@ private fun ConversationScreen(
     onRename: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val messagePressShrinkPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        MESSAGE_PRESS_SHRINK_DP.dp.toPx()
+    }
     val scope = rememberCoroutineScope()
     val attachmentStorage = remember(context) { AttachmentStorage(context.applicationContext) }
     var showRename by remember { mutableStateOf(false) }
@@ -1944,13 +1950,13 @@ private fun ConversationScreen(
                             }
                             val messageInteraction = remember(message.id) { MutableInteractionSource() }
                             var messageTouchPressed by remember(message.id) { mutableStateOf(false) }
-                            val messagePressScale by animateFloatAsState(
-                                targetValue = if (messageTouchPressed) 0.985f else 1f,
+                            val messagePressProgress by animateFloatAsState(
+                                targetValue = if (messageTouchPressed) 1f else 0f,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMedium
                                 ),
-                                label = "message-press-scale-${message.id}"
+                                label = "message-press-progress-${message.id}"
                             )
                             val shouldAnimateEntry = hasPositionedInitialMessages &&
                                 message.id !in initialMessageIds &&
@@ -1987,8 +1993,15 @@ private fun ConversationScreen(
                                             val progress = entryProgress.value
                                             val entryScale = 0.93f + 0.07f * progress
                                             alpha = progress
-                                            scaleX = entryScale * messagePressScale
-                                            scaleY = entryScale * messagePressScale
+                                            // Shrink each card by a fixed physical amount, not a fixed
+                                            // percentage of its full height. Expanded messages therefore
+                                            // keep the same subtle press feedback as collapsed ones.
+                                            scaleX = entryScale * fixedDimensionScale(
+                                                size.width, messagePressShrinkPx, messagePressProgress
+                                            )
+                                            scaleY = entryScale * fixedDimensionScale(
+                                                size.height, messagePressShrinkPx, messagePressProgress
+                                            )
                                             translationY = (1f - progress) * 14.dp.toPx()
                                         }
                                         .clip(RoundedCornerShape(21.dp))
