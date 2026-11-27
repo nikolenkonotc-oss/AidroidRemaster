@@ -61,3 +61,11 @@ The debug build uses the `.debug` application ID suffix, so it can be installed 
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+## Alpha 0.2.0-alpha.6
+Chat messages can now include local file, photo-picker, and camera attachments. Attachments are copied into private app storage and remain linked to the saved message.
+
+
+## Alpha.6 — launcher icon and animations
+
+See `docs/ANIMATION_ICON_ALPHA6.md` for the adaptive crystal icon, conversation loading-state fix, message animations, and navigation motion updates.

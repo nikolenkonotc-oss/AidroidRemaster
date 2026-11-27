@@ -1,6 +1,7 @@
 package app.aidroid.remaster.data.local
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -22,5 +23,6 @@ data class MessageEntity(
     val chatId: Long,
     val role: String,
     val content: String,
-    val createdAt: Long
+    val createdAt: Long,
+    @ColumnInfo(defaultValue = "'[]'") val attachmentsJson: String = "[]"
 )

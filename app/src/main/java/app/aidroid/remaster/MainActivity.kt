@@ -1,6 +1,15 @@
 package app.aidroid.remaster
 
 import android.os.Bundle
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
@@ -9,6 +18,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -21,6 +33,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +44,8 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.animateItem
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,10 +56,14 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -56,11 +76,19 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import app.aidroid.remaster.data.ChatRepository
+import app.aidroid.remaster.data.attachments.AttachmentJson
+import app.aidroid.remaster.data.attachments.AttachmentStorage
+import app.aidroid.remaster.data.attachments.StoredAttachment
 import app.aidroid.remaster.data.local.AidroidDatabase
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlinx.coroutines.launch
 
 private val Violet = Color(0xFF9270F5)
@@ -71,6 +99,12 @@ private enum class Screen(val label: String) {
     HOME("Главная"), CHAT("Чаты"), AGENT("Агент"), MODELS("Модели"), SETTINGS("Настройки")
 }
 
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE messages ADD COLUMN attachmentsJson TEXT NOT NULL DEFAULT '[]'")
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,8 +112,9 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AidroidDatabase::class.java,
             "aidroid-remaster.db"
-        ).build()
-        val repository = ChatRepository(database.chatDao())
+        ).addMigrations(MIGRATION_1_2).build()
+        val attachmentStorage = AttachmentStorage(applicationContext)
+        val repository = ChatRepository(database.chatDao(), attachmentStorage)
         setContent { AidroidApp(repository) }
     }
 }
@@ -143,8 +178,14 @@ private fun AidroidApp(repository: ChatRepository) {
                     AnimatedContent(
                         targetState = selectedScreen,
                         transitionSpec = {
-                            (fadeIn(tween(220)) + scaleIn(initialScale = 0.985f, animationSpec = tween(220)))
-                                .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.99f, animationSpec = tween(150)))
+                            (fadeIn(tween(280)) +
+                                slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { it / 14 } +
+                                scaleIn(initialScale = 0.985f, animationSpec = tween(320, easing = FastOutSlowInEasing)))
+                                .togetherWith(
+                                    fadeOut(tween(190)) +
+                                        slideOutHorizontally(animationSpec = tween(240, easing = FastOutSlowInEasing)) { -it / 22 } +
+                                        scaleOut(targetScale = 0.99f, animationSpec = tween(240))
+                                )
                         },
                         label = "main-screen"
                     ) { screen ->
@@ -286,7 +327,7 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
                         .border(1.dp, Color.White.copy(alpha = 0.52f), RoundedCornerShape(15.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(painter = painterResource(R.drawable.ic_launcher_foreground), contentDescription = "Aidroid Remaster", modifier = Modifier.size(29.dp))
+                    Image(painter = painterResource(R.mipmap.ic_launcher_foreground), contentDescription = "Aidroid Remaster", modifier = Modifier.size(35.dp))
                 }
                 Spacer(Modifier.width(11.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -300,14 +341,14 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
                     Modifier.size(42.dp).clip(buttonShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), buttonShape)
-                        .clickable(onClick = onNewChat),
+                        .pressScaleClickable(onClick = onNewChat),
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Filled.AddComment, "Новый чат", tint = MaterialTheme.colorScheme.onBackground) }
                 Box(
                     Modifier.size(42.dp).clip(buttonShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), buttonShape)
-                        .clickable(onClick = onSettings),
+                        .pressScaleClickable(onClick = onSettings),
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Filled.Settings, "Настройки", tint = MaterialTheme.colorScheme.onBackground) }
             }
@@ -512,37 +553,77 @@ private fun ChatWorkspace(
     var showArchived by rememberSaveable { mutableStateOf(false) }
     val chats by (if (showArchived) repository.archivedChats() else repository.activeChats())
         .collectAsState(initial = emptyList())
-    val selectedChat = chats.firstOrNull { it.id == selectedChatId }
-    val messagesFlow: Flow<List<MessageEntity>>? = selectedChatId?.let { repository.messages(it) }
-    val messages by (messagesFlow ?: kotlinx.coroutines.flow.flowOf(emptyList()))
-        .collectAsState(initial = emptyList())
 
+    // null means Room has not emitted the first result yet. This prevents the
+    // empty-chat welcome card from flashing over an existing conversation.
+    val messages by produceState<List<MessageEntity>?>(initialValue = null, key1 = selectedChatId) {
+        value = null
+        val chatId = selectedChatId ?: return@produceState
+        repository.messages(chatId).collect { value = it }
+    }
 
-    if (selectedChatId == null || selectedChat == null) {
-        ChatListScreen(
-            chats = chats,
-            archived = showArchived,
-            onToggleArchived = { showArchived = it },
-            onCreate = {
-                scope.launch {
-                    val id = repository.createChat()
-                    onSelectChat(id)
-                }
-            },
-            onOpen = { onSelectChat(it) },
-            onRename = { chat, title -> scope.launch { repository.rename(chat.id, title) } },
-            onPin = { chat -> scope.launch { repository.setPinned(chat, !chat.isPinned) } },
-            onArchive = { chat -> scope.launch { repository.setArchived(chat, !chat.isArchived) } },
-            onDelete = { chat -> scope.launch { repository.delete(chat) } }
-        )
-    } else {
-        ConversationScreen(
-            chat = selectedChat,
-            messages = messages,
-            onBack = onBackToChats,
-            onSend = { text -> scope.launch { repository.sendUserMessage(selectedChat.id, text) } },
-            onRename = { title -> scope.launch { repository.rename(selectedChat.id, title) } }
-        )
+    AnimatedContent(
+        targetState = selectedChatId,
+        transitionSpec = {
+            if (targetState != null) {
+                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it / 12 } +
+                    scaleIn(initialScale = 0.985f, animationSpec = tween(320)))
+                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { -it / 18 })
+            } else {
+                (fadeIn(tween(260)) + slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 14 })
+                    .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(220)) { it / 18 })
+            }
+        },
+        label = "chat-list-conversation-transition"
+    ) { destinationChatId ->
+        if (destinationChatId == null) {
+            ChatListScreen(
+                chats = chats,
+                archived = showArchived,
+                onToggleArchived = { showArchived = it },
+                onCreate = {
+                    scope.launch {
+                        val id = repository.createChat()
+                        onSelectChat(id)
+                    }
+                },
+                onOpen = { onSelectChat(it) },
+                onRename = { chat, title -> scope.launch { repository.rename(chat.id, title) } },
+                onPin = { chat -> scope.launch { repository.setPinned(chat, !chat.isPinned) } },
+                onArchive = { chat -> scope.launch { repository.setArchived(chat, !chat.isArchived) } },
+                onDelete = { chat -> scope.launch { repository.delete(chat) } }
+            )
+        } else {
+            val destinationChat = chats.firstOrNull { it.id == destinationChatId }
+            if (destinationChat == null) {
+                ConversationLoadingState()
+            } else {
+                ConversationScreen(
+                    chat = destinationChat,
+                    messages = if (destinationChatId == selectedChatId) messages else null,
+                    onBack = onBackToChats,
+                    onSend = { text, attachments ->
+                        scope.launch { repository.sendUserMessage(destinationChat.id, text, attachments) }
+                    },
+                    onRename = { title -> scope.launch { repository.rename(destinationChat.id, title) } }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationLoadingState() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        GlassPanel(modifier = Modifier.size(92.dp), cornerRadius = 26) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(30.dp),
+                    strokeWidth = 2.5.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
     }
 }
 
@@ -596,7 +677,7 @@ private fun ChatListScreen(
                         )
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
-                    .clickable(onClick = onCreate),
+                    .pressScaleClickable(onClick = onCreate),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -617,9 +698,12 @@ private fun ChatListScreen(
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Очистить поиск")
-                        }
+                        PressAnimatedIconButton(
+                            onClick = { query = "" },
+                            icon = Icons.Filled.Close,
+                            contentDescription = "Очистить поиск",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 singleLine = true,
@@ -664,7 +748,7 @@ private fun ChatListScreen(
                             if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f) else Color.Transparent,
                             RoundedCornerShape(14.dp)
                         )
-                        .clickable {
+                        .pressScaleClickable {
                             if (archived != isArchive) {
                                 onToggleArchived(isArchive)
                                 query = ""
@@ -751,14 +835,16 @@ private fun ChatListScreen(
                 contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
             ) {
                 items(filtered, key = { it.id }) { chat ->
-                    ChatListItem(
-                        chat,
-                        onOpen = { onOpen(chat.id) },
-                        onRename = { renameTarget = chat },
-                        onPin = { onPin(chat) },
-                        onArchive = { onArchive(chat) },
-                        onDelete = { deleteTarget = chat }
-                    )
+                    Box(Modifier.fillMaxWidth().animateItem()) {
+                        ChatListItem(
+                            chat,
+                            onOpen = { onOpen(chat.id) },
+                            onRename = { renameTarget = chat },
+                            onPin = { onPin(chat) },
+                            onArchive = { onArchive(chat) },
+                            onDelete = { deleteTarget = chat }
+                        )
+                    }
                 }
             }
         }
@@ -770,8 +856,8 @@ private fun ChatListScreen(
             onDismissRequest = { renameTarget = null },
             title = { Text("Переименовать чат") },
             text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Название") }) },
-            confirmButton = { TextButton(onClick = { onRename(chat, title); renameTarget = null }) { Text("Сохранить") } },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Отмена") } }
+            confirmButton = { PressAnimatedTextButton("Сохранить") { onRename(chat, title); renameTarget = null } },
+            dismissButton = { PressAnimatedTextButton("Отмена") { renameTarget = null } }
         )
     }
     deleteTarget?.let { chat ->
@@ -779,8 +865,13 @@ private fun ChatListScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Удалить диалог?") },
             text = { Text("«${chat.title}» и все его сообщения будут удалены без возможности восстановления.") },
-            confirmButton = { TextButton(onClick = { onDelete(chat); deleteTarget = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Удалить") } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Отмена") } }
+            confirmButton = {
+                PressAnimatedTextButton(
+                    text = "Удалить",
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { onDelete(chat); deleteTarget = null }
+            },
+            dismissButton = { PressAnimatedTextButton("Отмена") { deleteTarget = null } }
         )
     }
 }
@@ -830,7 +921,12 @@ private fun ChatListItem(
                 )
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню чата", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                PressAnimatedIconButton(
+                    onClick = { menu = true },
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = "Меню чата",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Переименовать") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(text = { Text(if (chat.isPinned) "Открепить" else "Закрепить") }, leadingIcon = { Icon(Icons.Filled.PushPin, null) }, onClick = { menu = false; onPin() })
@@ -842,103 +938,329 @@ private fun ChatListItem(
         }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConversationScreen(
     chat: ChatEntity,
-    messages: List<MessageEntity>,
+    messages: List<MessageEntity>?,
     onBack: () -> Unit,
-    onSend: (String) -> Unit,
+    onSend: (String, List<StoredAttachment>) -> Unit,
     onRename: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val attachmentStorage = remember(context) { AttachmentStorage(context.applicationContext) }
     var showRename by remember { mutableStateOf(false) }
+    var showAttachmentMenu by remember { mutableStateOf(false) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
+    var attachmentError by remember { mutableStateOf<String?>(null) }
+    val pendingAttachments = remember(chat.id) { mutableStateListOf<StoredAttachment>() }
+    var pendingCameraFile by remember(chat.id) { mutableStateOf<File?>(null) }
+    val messageListState = rememberLazyListState()
+    var hasPositionedInitialMessages by remember(chat.id) { mutableStateOf(false) }
+    LaunchedEffect(chat.id, messages?.size) {
+        val loadedCount = messages?.size ?: 0
+        if (loadedCount > 0) {
+            if (!hasPositionedInitialMessages) {
+                messageListState.scrollToItem(loadedCount - 1)
+                hasPositionedInitialMessages = true
+            } else {
+                messageListState.animateScrollToItem(loadedCount - 1)
+            }
+        }
+    }
+
+    fun addPickedUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val availableSlots = MAX_MESSAGE_ATTACHMENTS - pendingAttachments.size
+        if (availableSlots <= 0) {
+            attachmentError = "Можно прикрепить не более $MAX_MESSAGE_ATTACHMENTS файлов к одному сообщению."
+            return
+        }
+        val acceptedUris = uris.take(availableSlots)
+        scope.launch {
+            var addedCount = 0
+            acceptedUris.forEach { uri ->
+                try {
+                    val imported = attachmentStorage.importUri(uri)
+                    val totalBytes = pendingAttachments.sumOf { it.sizeBytes } + imported.sizeBytes
+                    if (totalBytes > MAX_MESSAGE_TOTAL_BYTES) {
+                        attachmentStorage.delete(imported)
+                        attachmentError = "Общий размер вложений не должен превышать 50 МБ."
+                    } else {
+                        pendingAttachments.add(imported)
+                        addedCount++
+                        attachmentError = null
+                    }
+                } catch (error: Exception) {
+                    attachmentError = error.message ?: "Не удалось прикрепить файл."
+                }
+            }
+            if (addedCount > 0) {
+                Toast.makeText(context, "Добавлено файлов: $addedCount", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(MAX_MESSAGE_ATTACHMENTS)
+    ) { uris -> addPickedUris(uris) }
+
+    val documentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> addPickedUris(uris) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val capturedFile = pendingCameraFile
+        pendingCameraFile = null
+        if (success && capturedFile != null && capturedFile.exists() && capturedFile.length() > 0L) {
+            try {
+                val attachment = attachmentStorage.fromCameraFile(capturedFile)
+                val totalBytes = pendingAttachments.sumOf { it.sizeBytes } + attachment.sizeBytes
+                if (attachment.sizeBytes > MAX_SINGLE_ATTACHMENT_BYTES ||
+                    pendingAttachments.size >= MAX_MESSAGE_ATTACHMENTS ||
+                    totalBytes > MAX_MESSAGE_TOTAL_BYTES
+                ) {
+                    attachmentStorage.delete(attachment)
+                    attachmentError = "Фото превышает лимит 25 МБ или общий лимит вложений."
+                } else {
+                    pendingAttachments.add(attachment)
+                    attachmentError = null
+                }
+            } catch (error: Exception) {
+                capturedFile.delete()
+                attachmentError = error.message ?: "Не удалось сохранить снимок."
+            }
+        } else {
+            capturedFile?.delete()
+        }
+    }
+
+    fun launchCamera() {
+        try {
+            val file = attachmentStorage.createCameraOutput()
+            pendingCameraFile = file
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            cameraLauncher.launch(uri)
+        } catch (error: Exception) {
+            pendingCameraFile?.delete()
+            pendingCameraFile = null
+            attachmentError = "Не удалось открыть камеру: ${error.message ?: "ошибка приложения камеры"}"
+        }
+    }
+
+    DisposableEffect(chat.id) {
+        onDispose {
+            pendingAttachments.forEach(attachmentStorage::delete)
+            pendingCameraFile?.delete()
+        }
+    }
+
+    fun sendCurrentMessage() {
+        val text = localText.trim()
+        if (text.isEmpty() && pendingAttachments.isEmpty()) return
+        val attachments = pendingAttachments.toList()
+        onSend(text, attachments)
+        localText = ""
+        pendingAttachments.clear()
+        attachmentError = null
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         GlassPanel(modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp), cornerRadius = 21) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "К списку чатов", tint = MaterialTheme.colorScheme.onSurface) }
+                PressAnimatedIconButton(
+                    onClick = onBack,
+                    icon = Icons.Filled.ArrowBack,
+                    contentDescription = "К списку чатов",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(chat.title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text("Отдельная история · хранится локально", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
-                IconButton(onClick = { showRename = true }) { Icon(Icons.Filled.Edit, "Переименовать", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                PressAnimatedIconButton(
+                    onClick = { showRename = true },
+                    icon = Icons.Filled.Edit,
+                    contentDescription = "Переименовать",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
-        AnimatedVisibility(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            visible = messages.isEmpty(),
-            enter = fadeIn(tween(280)) + scaleIn(initialScale = 0.96f, animationSpec = tween(280)),
-            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.98f, animationSpec = tween(160))
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Box(
-                            Modifier.size(54.dp).clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.24f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)))),
-                            contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp)) }
-                        Text("С чего начнём?", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        Text("Сообщения этого чата не смешиваются с другими.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+
+        val loadedMessagesState = messages
+        when {
+            loadedMessagesState == null -> {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(27.dp),
+                        strokeWidth = 2.4.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            loadedMessagesState.isEmpty() -> {
+                AnimatedVisibility(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    visible = true,
+                    enter = fadeIn(tween(360)) +
+                        scaleIn(initialScale = 0.94f, animationSpec = tween(420, easing = FastOutSlowInEasing)) +
+                        slideInVertically(initialOffsetY = { it / 18 }, animationSpec = tween(360)),
+                    label = "new-chat-welcome"
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(9.dp)
+                            ) {
+                                Box(
+                                    Modifier.size(54.dp).clip(CircleShape)
+                                        .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.24f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)))),
+                                    contentAlignment = Alignment.Center
+                                ) { Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp)) }
+                                Text("С чего начнём?", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                Text("Можно написать сообщение, добавить файлы или сделать фото камерой.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                 }
             }
-        }
-        if (messages.isNotEmpty()) {
-            LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                items(messages, key = { it.id }) { message ->
-                    val isUser = message.role == "user"
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                        GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
-                            Text(
-                                message.content,
-                                Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+            else -> {
+                LazyColumn(
+                    state = messageListState,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(loadedMessagesState, key = { it.id }) { message ->
+                        val isUser = message.role == "user"
+                        val attachments = AttachmentJson.decode(message.attachmentsJson)
+                        Row(
+                            Modifier.fillMaxWidth().animateItem(),
+                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                        ) {
+                            GlassPanel(modifier = Modifier.widthIn(max = 320.dp), cornerRadius = 21, highlighted = isUser) {
+                                Column(
+                                    Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (message.content.isNotBlank()) {
+                                        Text(message.content, color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                    attachments.forEach { attachment ->
+                                        StoredAttachmentCard(attachment) {
+                                            openStoredAttachment(context, attachment)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
         GlassPanel(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 9.dp), cornerRadius = 25) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                OutlinedTextField(
-                    value = localText,
-                    onValueChange = { localText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Сообщение...") },
-                    shape = RoundedCornerShape(19.dp),
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (localText.isNotBlank()) { onSend(localText); localText = "" }
-                    }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary
+                if (pendingAttachments.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        pendingAttachments.forEach { attachment ->
+                            PendingAttachmentChip(attachment) {
+                                pendingAttachments.remove(attachment)
+                                attachmentStorage.delete(attachment)
+                            }
+                        }
+                    }
+                }
+                if (attachmentError != null) {
+                    Text(
+                        attachmentError.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
-                )
-                GlowSendButton(enabled = localText.isNotBlank()) {
-                    if (localText.isNotBlank()) { onSend(localText); localText = "" }
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box {
+                        PressAnimatedIconButton(
+                            onClick = { showAttachmentMenu = true },
+                            icon = Icons.Filled.AttachFile,
+                            contentDescription = "Прикрепить",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        DropdownMenu(
+                            expanded = showAttachmentMenu,
+                            onDismissRequest = { showAttachmentMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Фото из галереи") },
+                                leadingIcon = { Icon(Icons.Filled.PhotoLibrary, null) },
+                                onClick = {
+                                    showAttachmentMenu = false
+                                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Сделать фото") },
+                                leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
+                                onClick = {
+                                    showAttachmentMenu = false
+                                    launchCamera()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Прикрепить файл") },
+                                leadingIcon = { Icon(Icons.Filled.InsertDriveFile, null) },
+                                onClick = {
+                                    showAttachmentMenu = false
+                                    documentPicker.launch(arrayOf("*/*"))
+                                }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = localText,
+                        onValueChange = { localText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Сообщение...") },
+                        shape = RoundedCornerShape(19.dp),
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { sendCurrentMessage() }),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    GlowSendButton(enabled = localText.isNotBlank() || pendingAttachments.isNotEmpty()) {
+                        sendCurrentMessage()
+                    }
                 }
             }
         }
@@ -949,11 +1271,191 @@ private fun ConversationScreen(
             onDismissRequest = { showRename = false },
             title = { Text("Название чата") },
             text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { onRename(title); showRename = false }) { Text("Сохранить") } },
-            dismissButton = { TextButton(onClick = { showRename = false }) { Text("Отмена") } }
+            confirmButton = { PressAnimatedTextButton("Сохранить") { onRename(title); showRename = false } },
+            dismissButton = { PressAnimatedTextButton("Отмена") { showRename = false } }
         )
     }
 }
+
+private const val MAX_MESSAGE_ATTACHMENTS = 10
+private const val MAX_MESSAGE_TOTAL_BYTES = 50L * 1024L * 1024L
+private const val MAX_SINGLE_ATTACHMENT_BYTES = 25L * 1024L * 1024L
+
+@Composable
+private fun PendingAttachmentChip(attachment: StoredAttachment, onRemove: () -> Unit) {
+    Row(
+        Modifier.widthIn(max = 210.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+            .padding(start = 9.dp, end = 3.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            if (attachment.mimeType.startsWith("image/")) Icons.Filled.Image else Icons.Filled.InsertDriveFile,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(attachment.displayName, maxLines = 1, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(formatAttachmentSize(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        PressAnimatedIconButton(
+            onClick = onRemove,
+            icon = Icons.Filled.Close,
+            contentDescription = "Убрать вложение",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(28.dp),
+            iconModifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun StoredAttachmentCard(attachment: StoredAttachment, onClick: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val imageBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, key1 = attachment.relativePath) {
+        if (attachment.mimeType.startsWith("image/")) {
+            value = withContext(Dispatchers.IO) {
+                val file = File(context.filesDir, attachment.relativePath)
+                if (!file.isFile) null else {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(file.absolutePath, bounds)
+                    val sample = maxOf(1, minOf(bounds.outWidth / 480, bounds.outHeight / 360))
+                    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                    BitmapFactory.decodeFile(file.absolutePath, options)?.asImageBitmap()
+                }
+            }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(15.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(15.dp))
+            .pressScaleClickable(onClick = onClick)
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap!!,
+                contentDescription = attachment.displayName,
+                modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (attachment.mimeType.startsWith("image/")) Icons.Filled.Image else Icons.Filled.InsertDriveFile,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(attachment.displayName, maxLines = 1, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text("${attachment.mimeType} · ${formatAttachmentSize(attachment.sizeBytes)}", maxLines = 1, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Filled.OpenInNew, contentDescription = "Открыть файл", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+    }
+}
+
+private fun formatAttachmentSize(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes Б"
+    bytes < 1024L * 1024L -> "${bytes / 1024L} КБ"
+    else -> String.format(java.util.Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0))
+}
+
+private fun openStoredAttachment(context: android.content.Context, attachment: StoredAttachment) {
+    try {
+        val file = File(context.filesDir, attachment.relativePath)
+        if (!file.isFile) {
+            Toast.makeText(context, "Файл не найден в хранилище приложения.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val viewIntent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.mimeType)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(Intent.createChooser(viewIntent, "Открыть вложение"))
+    } catch (error: ActivityNotFoundException) {
+        Toast.makeText(context, "На устройстве нет приложения для этого типа файла.", Toast.LENGTH_LONG).show()
+    } catch (error: Exception) {
+        Toast.makeText(context, "Не удалось открыть файл: ${error.message}", Toast.LENGTH_LONG).show()
+    }
+}
+
+@Composable
+private fun PressAnimatedIconButton(
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    iconModifier: Modifier = Modifier
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = tween(165, easing = FastOutSlowInEasing),
+        label = "icon-button-press-scale"
+    )
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        interactionSource = interaction
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = iconModifier)
+    }
+}
+
+@Composable
+private fun PressAnimatedTextButton(
+    text: String,
+    colors: ButtonColors = ButtonDefaults.textButtonColors(),
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = tween(165, easing = FastOutSlowInEasing),
+        label = "text-button-press-scale"
+    )
+    TextButton(
+        onClick = onClick,
+        colors = colors,
+        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        interactionSource = interaction
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun Modifier.pressScaleClickable(
+    onClick: () -> Unit,
+    pressedScale: Float = 0.965f
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = tween(170, easing = FastOutSlowInEasing),
+        label = "shared-press-scale"
+    )
+    return this.graphicsLayer { scaleX = scale; scaleY = scale }
+        .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+}
+
 @Composable
 private fun GlowSendButton(enabled: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }

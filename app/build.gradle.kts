@@ -14,8 +14,8 @@ android {
         applicationId = "app.aidroid.remaster"
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.2.0-alpha.4"
+        versionCode = 6
+        versionName = "0.2.0-alpha.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -55,6 +55,7 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)

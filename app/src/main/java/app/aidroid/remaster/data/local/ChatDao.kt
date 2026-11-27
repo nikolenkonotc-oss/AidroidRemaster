@@ -24,6 +24,9 @@ interface ChatDao {
     @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId")
     suspend fun countMessages(chatId: Long): Int
 
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY createdAt ASC, id ASC")
+    suspend fun getMessages(chatId: Long): List<MessageEntity>
+
     @Insert
     suspend fun insertChat(chat: ChatEntity): Long
 
