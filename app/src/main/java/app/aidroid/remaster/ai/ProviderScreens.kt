@@ -1,5 +1,7 @@
 package app.aidroid.remaster.ai
 
+import app.aidroid.remaster.GlassPanel
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -295,7 +297,7 @@ private fun ProviderEditorDialog(
                             ),
                             apiKey
                         )
-                    }.onSuccess(onSaved).onFailure { message = it.message ?: "Проверь настройки подключения." }
+                    }.onSuccess { onSaved() }.onFailure { message = it.message ?: "Проверь настройки подключения." }
                 }
             ) { Text("Сохранить") }
         },
