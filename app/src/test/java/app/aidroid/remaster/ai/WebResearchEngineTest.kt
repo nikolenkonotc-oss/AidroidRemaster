@@ -45,7 +45,7 @@ class WebResearchEngineTest {
                   {
                     "pageid": 12345,
                     "title": "Grand Theft Auto VI",
-                    "snippet": "An upcoming <span class=\\"searchmatch\\">video game</span>."
+                    "snippet": "An upcoming <span class=\"searchmatch\">video game</span>."
                   }
                 ]
               }
