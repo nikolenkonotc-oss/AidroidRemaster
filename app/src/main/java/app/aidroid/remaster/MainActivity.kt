@@ -1464,8 +1464,6 @@ private fun ConversationScreen(
     var selectedMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var textSelectionMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
-    var pendingSends by remember { mutableStateOf(0) }
-    val isSending = pendingSends > 0
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1595,13 +1593,10 @@ private fun ConversationScreen(
         if (text.isEmpty() && pendingAttachments.isEmpty()) return
         val attachments = pendingAttachments.toList()
 
-        // Detach this submission from the composer immediately. The next message can
-        // be entered and sent while this one is still being persisted/synced.
+        // Detach this submission immediately; cloud sync is queued independently.
         localText = ""
         pendingAttachments.clear()
         attachmentError = null
-        pendingSends += 1
-
         scope.launch {
             try {
                 onSend(text, attachments)
@@ -1609,8 +1604,6 @@ private fun ConversationScreen(
                 throw cancelled
             } catch (error: Exception) {
                 attachmentError = "Не удалось сохранить сообщение: ${error.message ?: "попробуй ещё раз"}"
-            } finally {
-                pendingSends = (pendingSends - 1).coerceAtLeast(0)
             }
         }
     }
@@ -1896,7 +1889,6 @@ private fun ConversationScreen(
                     )
                     GlowSendButton(
                         enabled = localText.isNotBlank() || pendingAttachments.isNotEmpty(),
-                        loading = isSending
                     ) {
                         sendCurrentMessage()
                     }
