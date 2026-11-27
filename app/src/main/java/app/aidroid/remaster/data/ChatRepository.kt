@@ -77,7 +77,7 @@ class ChatRepository(
         requestCloudSync()
     }
 
-    suspend fun addAssistantMessage(chatId: Long, content: String) {
+    suspend fun addAssistantMessage(chatId: Long, content: String, attachments: List<StoredAttachment> = emptyList()) {
         val clean = content.trim()
         if (clean.isBlank()) return
         val now = System.currentTimeMillis()
@@ -86,7 +86,8 @@ class ChatRepository(
                 chatId = chatId,
                 role = "assistant",
                 content = clean,
-                createdAt = now
+                createdAt = now,
+                attachmentsJson = AttachmentJson.encode(attachments)
             )
         )
         dao.touchChat(chatId, now)
