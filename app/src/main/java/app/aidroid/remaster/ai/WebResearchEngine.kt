@@ -480,12 +480,12 @@ internal object WebHtmlParser {
         parseResultAnchors(html, "ob", "s", limit, "Mojeek")
 
     fun parseGoogleNewsRss(xml: String, limit: Int = 8): List<WebSearchHit> {
-        val itemPattern = Regex("""(?is)<item\\b[^>]*>(.*?)</item\\s*>""")
+        val itemPattern = Regex("""(?is)<item\b[^>]*>(.*?)</item\s*>""")
         val results = linkedMapOf<String, WebSearchHit>()
         itemPattern.findAll(xml).forEach { match ->
             val item = match.groupValues[1]
             fun tag(name: String): String {
-                val raw = Regex("""(?is)<$name\\b[^>]*>(.*?)</$name\\s*>""")
+                val raw = Regex("""(?is)<$name\b[^>]*>(.*?)</$name\s*>""")
                     .find(item)?.groupValues?.get(1).orEmpty().trim()
                 val unwrapped = raw.removePrefix("<![CDATA[").removeSuffix("]]>").trim()
                 return unwrapped
