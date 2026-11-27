@@ -2289,9 +2289,51 @@ private fun PlaceholderScreen(title: String, description: String, icon: androidx
     }
 }
 @Composable
-private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+private fun SettingsScreen(
+    darkTheme: Boolean,
+    onThemeChange: (Boolean) -> Unit,
+    profile: AccountProfile,
+    onOpenAccount: () -> Unit
+) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Text("Настройки", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        GlassPanel(
+            modifier = Modifier.fillMaxWidth().pressScaleClickable(onClick = onOpenAccount),
+            cornerRadius = 24
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(17.dp),
+                horizontalArrangement = Arrangement.spacedBy(13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ProfileAvatar(
+                    source = profile.avatarUri.ifBlank { profile.googlePhotoUrl },
+                    displayName = profile.displayName,
+                    modifier = Modifier.size(51.dp),
+                    onClick = onOpenAccount
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Аккаунт", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (profile.isSignedIn) profile.displayName.ifBlank { "Мой профиль" }
+                        else "Вход через Google или локально",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (profile.isSignedIn) {
+                        Text(
+                            if (profile.accountType == "google") "GOOGLE" else "ЛОКАЛЬНЫЙ ПРОФИЛЬ",
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.labelSmall,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+                Icon(Icons.Filled.ChevronRight, contentDescription = "Открыть аккаунт", tint = MaterialTheme.colorScheme.primary)
+            }
+        }
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Row(
                 Modifier.fillMaxWidth().padding(18.dp),
@@ -2309,6 +2351,435 @@ private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit)
         InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.9 · Aurora Glass")
     }
 }
+@Composable
+private fun AccountScreen(
+    profile: AccountProfile,
+    googleLoading: Boolean,
+    errorMessage: String?,
+    onBack: () -> Unit,
+    onProfileChange: (AccountProfile) -> Unit,
+    onLocalContinue: () -> Unit,
+    onGoogleSignIn: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PressAnimatedIconButton(
+                onClick = onBack,
+                icon = Icons.Filled.ArrowBack,
+                contentDescription = "Назад к настройкам",
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(42.dp),
+                iconModifier = Modifier.size(21.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    if (profile.isSignedIn) "Мой профиль" else "Аккаунт",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (profile.isSignedIn) "Управление профилем и данными" else "Выбери удобный способ входа",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        AnimatedContent(
+            targetState = profile.isSignedIn,
+            transitionSpec = {
+                (fadeIn(tween(190)) + scaleIn(initialScale = 0.975f, animationSpec = tween(220)))
+                    .togetherWith(fadeOut(tween(130)) + scaleOut(targetScale = 0.985f, animationSpec = tween(150)))
+            },
+            label = "account-content"
+        ) { signedIn ->
+            if (signedIn) {
+                ProfileEditor(
+                    profile = profile,
+                    onProfileChange = onProfileChange,
+                    onSignOut = onSignOut
+                )
+            } else {
+                AccountSignInOptions(
+                    loading = googleLoading,
+                    errorMessage = errorMessage,
+                    onGoogleSignIn = onGoogleSignIn,
+                    onLocalContinue = onLocalContinue
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountSignInOptions(
+    loading: Boolean,
+    errorMessage: String?,
+    onGoogleSignIn: () -> Unit,
+    onLocalContinue: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
+            Column(
+                Modifier.fillMaxWidth().padding(22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(13.dp)
+            ) {
+                Box(
+                    Modifier.size(76.dp).clip(RoundedCornerShape(25.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.30f),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)
+                                )
+                            )
+                        )
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), RoundedCornerShape(25.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(37.dp))
+                }
+                Text(
+                    "Твой профиль в Aidroid",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Войди через Google или создай локальный профиль. Приложение продолжит работать и без регистрации.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                AccountPrimaryButton(
+                    text = if (loading) "Подключаем Google..." else "Продолжить с Google",
+                    icon = Icons.Filled.AccountCircle,
+                    enabled = !loading,
+                    loading = loading,
+                    onClick = onGoogleSignIn
+                )
+                AccountSecondaryButton(
+                    text = "Продолжить локально",
+                    icon = Icons.Filled.PersonOutline,
+                    enabled = !loading,
+                    onClick = onLocalContinue
+                )
+                Text(
+                    "Локальный профиль хранится только на этом устройстве.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = !errorMessage.isNullOrBlank(),
+            enter = fadeIn(tween(180)) + expandVertically(tween(200)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(150))
+        ) {
+            GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 18) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                    Text(
+                        errorMessage.orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileEditor(
+    profile: AccountProfile,
+    onProfileChange: (AccountProfile) -> Unit,
+    onSignOut: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+                // Some photo picker providers grant a temporary permission only.
+            }
+            onProfileChange(profile.copy(avatarUri = uri.toString(), googlePhotoUrl = ""))
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27, highlighted = true) {
+            Column(
+                Modifier.fillMaxWidth().padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    ProfileAvatar(
+                        source = profile.avatarUri.ifBlank { profile.googlePhotoUrl },
+                        displayName = profile.displayName,
+                        modifier = Modifier.size(94.dp),
+                        onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    )
+                    Box(
+                        Modifier.size(30.dp).clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            .pressScaleClickable {
+                                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Изменить аватар", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(15.dp))
+                    }
+                }
+                Text(
+                    profile.displayName.ifBlank { "Пользователь" },
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (profile.accountType == "google") "GOOGLE-ПРОФИЛЬ" else "ЛОКАЛЬНЫЙ ПРОФИЛЬ",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    letterSpacing = 1.4.sp
+                )
+            }
+        }
+
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
+            Column(
+                Modifier.fillMaxWidth().padding(17.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Основная информация", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = profile.displayName,
+                    onValueChange = { onProfileChange(profile.copy(displayName = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Имя") },
+                    leadingIcon = { Icon(Icons.Filled.Person, null) },
+                    colors = auroraTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = profile.username,
+                    onValueChange = { onProfileChange(profile.copy(username = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24))) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Имя пользователя") },
+                    leadingIcon = { Text("@", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
+                    colors = auroraTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = profile.status,
+                    onValueChange = { onProfileChange(profile.copy(status = it.take(48))) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Статус") },
+                    leadingIcon = { Icon(Icons.Filled.Circle, null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.secondary) },
+                    colors = auroraTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = profile.bio,
+                    onValueChange = { onProfileChange(profile.copy(bio = it.take(180))) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                    label = { Text("О себе") },
+                    colors = auroraTextFieldColors()
+                )
+            }
+        }
+
+        if (profile.email.isNotBlank()) {
+            GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 22) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.MailOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Google-аккаунт", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text(profile.email, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Icon(Icons.Filled.Verified, contentDescription = "Google", tint = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        }
+
+        InfoCard(
+            Icons.Filled.Security,
+            "Сохранение профиля",
+            "Имя, статус и аватар сохраняются автоматически на устройстве. Облачная синхронизация пока не включена."
+        )
+        AccountSecondaryButton(
+            text = "Выйти из аккаунта",
+            icon = Icons.Filled.Logout,
+            onClick = onSignOut
+        )
+    }
+}
+
+@Composable
+private fun ProfileAvatar(
+    source: String,
+    displayName: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val image by produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+        initialValue = null,
+        key1 = source
+    ) {
+        value = if (source.isBlank()) null else withContext(Dispatchers.IO) {
+            try {
+                val parsed = Uri.parse(source)
+                when (parsed.scheme?.lowercase()) {
+                    "content", "file" -> context.contentResolver.openInputStream(parsed)?.use {
+                        BitmapFactory.decodeStream(it)?.asImageBitmap()
+                    }
+                    "http", "https" -> {
+                        val connection = URL(source).openConnection() as HttpURLConnection
+                        try {
+                            connection.connectTimeout = 5000
+                            connection.readTimeout = 5000
+                            connection.instanceFollowRedirects = true
+                            connection.inputStream.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                        } finally {
+                            connection.disconnect()
+                        }
+                    }
+                    else -> null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    Box(
+        modifier.clip(CircleShape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.36f),
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.20f)
+                    )
+                )
+            )
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.32f), CircleShape)
+            .pressScaleClickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (image != null) {
+            Image(
+                bitmap = image!!,
+                contentDescription = "Аватар профиля",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            val initials = displayName.trim().split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+                .take(2)
+                .joinToString("") { it.take(1).uppercase() }
+                .ifBlank { "A" }
+            Text(initials, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun AccountPrimaryButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.965f else 1f,
+        animationSpec = tween(170, easing = FastOutSlowInEasing),
+        label = "account-primary-scale"
+    )
+    Box(
+        Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFFD4C2FF), Violet, Color(0xFF7654C8))))
+            .border(1.dp, Color.White.copy(alpha = 0.46f), RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 17.dp, vertical = 15.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (loading) CircularProgressIndicator(modifier = Modifier.size(19.dp), color = Color.White, strokeWidth = 2.dp)
+            else Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Text(text, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun AccountSecondaryButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.975f else 1f,
+        animationSpec = tween(160),
+        label = "account-secondary-scale"
+    )
+    Box(
+        Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.28f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 17.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Text(text, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        val next = current.baseContext
+        if (next === current) break
+        current = next
+    }
+    return current as? Activity
+}
+
 @Composable
 private fun InfoCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, description: String) {
     GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 23) {
