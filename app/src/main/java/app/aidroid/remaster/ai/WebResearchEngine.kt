@@ -4,6 +4,12 @@ import okhttp3.Dns
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.contentOrNull
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.IDN
@@ -259,15 +265,143 @@ class WebResearchEngine {
 
 private object PublicOnlyDns : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
-        // Some dual-stack/CDN hosts return both public and non-public answers.
-        // Keep only routable public addresses instead of rejecting the whole host.
-        // The socket can only connect to this filtered list, so private targets remain blocked.
-        val publicAddresses = Dns.SYSTEM.lookup(hostname).filter(::isPublicAddress)
-        if (publicAddresses.isEmpty()) {
-            throw UnknownHostException("Для домена не найден публичный IP-адрес. Проверь DNS и адрес ссылки.")
+        // Prefer Android's configured DNS, but don't treat a resolver outage as a
+        // permanent search outage. Every returned address is still checked below.
+        val systemAddresses = runCatching { Dns.SYSTEM.lookup(hostname) }
+            .getOrDefault(emptyList())
+            .filter(::isPublicAddress)
+        if (systemAddresses.isNotEmpty()) return systemAddresses
+
+        val dohAddresses = runCatching { DnsOverHttpsResolver.lookup(hostname) }
+            .getOrElse { error ->
+                throw UnknownHostException(
+                    "Системный DNS не разрешил домен, а резервный DNS-over-HTTPS тоже недоступен: ${error.message ?: "ошибка DNS"}"
+                )
+            }
+            .filter(::isPublicAddress)
+
+        if (dohAddresses.isEmpty()) {
+            throw UnknownHostException("Для домена не найден публичный IP-адрес. Проверь DNS и доступность интернета.")
         }
-        return publicAddresses
+        return dohAddresses
     }
+}
+
+/**
+ * DNS-over-HTTPS fallback with pinned resolver bootstrap IPs.
+ * TLS still validates the resolver hostname; the pinned IPs are only used to
+ * reach the resolver when the device's ordinary DNS is unavailable.
+ */
+private object DnsOverHttpsResolver {
+    private data class Resolver(
+        val hostname: String,
+        val endpoint: String,
+        val bootstrapAddresses: List<String>
+    )
+
+    private val resolvers = listOf(
+        Resolver(
+            hostname = "cloudflare-dns.com",
+            endpoint = "https://cloudflare-dns.com/dns-query",
+            bootstrapAddresses = listOf("1.1.1.1", "1.0.0.1")
+        ),
+        Resolver(
+            hostname = "dns.google",
+            endpoint = "https://dns.google/resolve",
+            bootstrapAddresses = listOf("8.8.8.8", "8.8.4.4")
+        )
+    )
+
+    private val clients = resolvers.associate { resolver ->
+        resolver.hostname to OkHttpClient.Builder()
+            .dns(BootstrapDns(resolver.hostname, resolver.bootstrapAddresses))
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(6, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .build()
+    }
+
+    fun lookup(hostname: String): List<InetAddress> {
+        val failures = mutableListOf<String>()
+        for (type in listOf(1, 28)) {
+            for (resolver in resolvers) {
+                val result = runCatching { query(resolver, hostname, type) }
+                val addresses = result.getOrNull().orEmpty().filter(::isPublicAddress)
+                if (addresses.isNotEmpty()) return addresses.distinctBy { it.hostAddress }
+                result.exceptionOrNull()?.let { failures += "${resolver.hostname}: ${it.message}" }
+            }
+        }
+        val detail = failures.firstOrNull()?.take(180)
+        throw UnknownHostException(
+            "Публичный DNS-over-HTTPS не вернул адрес${detail?.let { " ($it)" } ?: ""}."
+        )
+    }
+
+    private fun query(resolver: Resolver, hostname: String, type: Int): List<InetAddress> {
+        val encodedHost = URLEncoder.encode(hostname, Charsets.UTF_8.name())
+        val url = when (resolver.hostname) {
+            "dns.google" -> "${resolver.endpoint}?name=$encodedHost&type=$type"
+            else -> "${resolver.endpoint}?name=$encodedHost&type=$type"
+        }
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/dns-json")
+            .header("User-Agent", "AidroidRemaster/1.0")
+            .get()
+            .build()
+
+        val client = clients.getValue(resolver.hostname)
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+            val body = response.body?.string().orEmpty()
+            return PublicDnsAnswerParser.parse(body, type)
+        }
+    }
+
+    private class BootstrapDns(
+        private val resolverHost: String,
+        private val addresses: List<String>
+    ) : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            if (hostname.trimEnd('.').equals(resolverHost, ignoreCase = true)) {
+                return addresses.map { parseNumericAddress(it) }
+            }
+            return Dns.SYSTEM.lookup(hostname)
+        }
+    }
+}
+
+internal object PublicDnsAnswerParser {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun parse(body: String, expectedType: Int): List<InetAddress> {
+        val root = json.parseToJsonElement(body).jsonObject
+        val status = root["Status"]?.jsonPrimitive?.intOrNull
+        if (status != null && status != 0) return emptyList()
+
+        return root["Answer"]?.jsonArray.orEmpty().mapNotNull { item ->
+            val answer = item.jsonObject
+            if (answer["type"]?.jsonPrimitive?.intOrNull != expectedType) return@mapNotNull null
+            val raw = answer["data"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val isExpectedAddress = when (expectedType) {
+                1 -> raw.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}"""))
+                28 -> raw.contains(':')
+                else -> false
+            }
+            if (!isExpectedAddress) return@mapNotNull null
+            runCatching { parseNumericAddress(raw) }
+                .getOrNull()
+                ?.takeIf(::isPublicAddress)
+        }.distinctBy { it.hostAddress }
+    }
+}
+
+private fun parseNumericAddress(value: String): InetAddress {
+    require(value.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}""")) || value.contains(':')) {
+        "DNS вернул некорректный IP-адрес."
+    }
+    return InetAddress.getByName(value)
 }
 
 private fun isPublicAddress(address: InetAddress): Boolean {
