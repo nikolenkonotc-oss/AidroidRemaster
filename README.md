@@ -4,7 +4,9 @@ Personal-first Android AI agent. Local-first, provider-agnostic, user-controlled
 
 ## Project status
 
-**Aurora UI, local chat persistence and attachments / milestone 0.2.0-alpha.7**
+**Aurora UI, local chat persistence, attachments and account/profile foundation / milestone 0.2.0-alpha.9**
+
+The account area supports a device-local profile with editable name, username, status, bio and avatar. Google sign-in is wired through Android Credential Manager; add the OAuth Web client ID as described in `docs/GOOGLE_AUTH_SETUP.md`. Cloud account verification and profile/chat synchronization are intentionally not enabled until a backend is added.
 
 The app includes a Compose navigation shell, Aurora light/dark themes, animated transitions, Room-backed multi-chat history, local photo/file/camera attachments, an adaptive launcher icon, and animated message actions. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
 
