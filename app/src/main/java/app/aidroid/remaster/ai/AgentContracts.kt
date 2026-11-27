@@ -101,11 +101,13 @@ data class AvailableModel(
 
 enum class AgentActionType {
     EMAIL_DRAFT,
-    CALENDAR_EVENT
+    CALENDAR_EVENT,
+    CODE_EXECUTION
 }
 
 data class AgentExternalAction(
     val id: String,
+    val chatId: Long,
     val type: AgentActionType,
     val title: String,
     val recipient: String = "",
