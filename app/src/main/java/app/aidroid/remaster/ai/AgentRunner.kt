@@ -78,7 +78,12 @@ class AgentRunner(
                     return saveResult(chatId, true, answer)
                 }
 
-                history += LlmMessage("assistant", response.text, toolCalls = response.toolCalls)
+                history += LlmMessage(
+                    role = "assistant",
+                    content = response.text,
+                    toolCalls = response.toolCalls,
+                    providerContent = response.providerContent
+                )
                 response.toolCalls.forEach { call ->
                     val toolResult = runCatching {
                         require(availableTools.any { it.name == call.name }) {
