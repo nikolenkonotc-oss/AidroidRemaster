@@ -50,7 +50,7 @@ Tool output is treated as untrusted data. There is no shell, arbitrary code exec
 - The local connection option targets an Ollama or llama.cpp HTTP server. Loading GGUF directly inside the Android process requires a separate native inference integration and is not included yet.
 - Attachments remain stored locally; file and image content is not yet sent to providers.
 - Built-in tools are limited to safe arithmetic and current device date/time. MCP, web search, app integrations, external REST tools, approval dialogs and execution audit history remain planned.
-- Reasoning effort is provider/model dependent. The explicit reasoning parameter is sent only when the user marks that model as supporting it.
+- Reasoning effort is provider/model dependent. Native reasoning is opt-in per provider/model to avoid sending unsupported parameters. Claude and Gemini adapters use model-family-specific reasoning controls and preserve native thought/signature blocks through tool cycles.
 
 ## References
 
