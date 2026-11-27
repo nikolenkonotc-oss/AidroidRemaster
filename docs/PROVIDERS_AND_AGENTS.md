@@ -49,3 +49,27 @@ The reasoning toggle is intentionally opt-in because reasoning parameters differ
 The first runtime provides a safe calculator and current device date/time. The model may request these tools, but the app validates every requested name against the enabled registry and executes only registered functions. The runtime has a five-round tool-call limit per response. No shell command, arbitrary code, or remote action is executed.
 
 MCP servers, web search, app integrations, document parsing, tool approvals and an action audit log are not enabled in this iteration. They must be added as explicit connectors with permission scopes and confirmation for consequential actions.
+
+
+## Agent tools
+
+The Agent workspace includes optional tools. Each connector is opt-in:
+
+- Web search uses Brave Search. Add a Brave Search API key in the Agent workspace. The key is encrypted with Android Keystore; search queries are sent to Brave when the agent calls the tool.
+- Image analysis sends user-selected JPEG, PNG or WebP attachments to the active vision-capable model. It does not scan the gallery automatically.
+- File analysis reads only files the user attached through Android's document picker. Text, Markdown, CSV, JSON, XML, HTML, PDF, DOCX, XLSX and PPTX are supported in this iteration. PDF and Office text extraction runs locally before any extracted content is sent to the active model. Extracted content is bounded by size/page/context limits.
+- Image generation and editing use the OpenAI Image API through a separately configured OpenAI provider key. The active chat model can be from a different provider. Generated images are stored as normal chat attachments. Editing never overwrites the original.
+- Code execution requires a user-configured Piston server URL. Python and JavaScript are the only exposed languages. Each run shows the language and complete code in an approval dialog. The server request applies short run/compile timeouts and memory caps. Use a trusted, isolated Piston service; submitted code and standard input are sent to that server.
+- Email drafts and calendar events use Android intents only after a separate approval. Email is opened as a draft and is not sent by Aidroid. Calendar events open the system event form and are not saved until the user confirms inside the calendar app.
+- Voice input requests the Android microphone permission only after the user taps the microphone button. On-device speech recognition is preferred when the device provides it; otherwise Android may use the configured recognition service. Voice output uses Android TextToSpeech.
+
+Tool calls are validated against the enabled registry. User approval expires after two minutes. Closing the confirmation dialog is equivalent to declining the action.
+
+## Current limitations
+
+- Image analysis depends on the active provider model supporting vision input. A text-only model cannot analyse attached images.
+- Image generation/editing is currently routed through an OpenAI API key even when another provider is selected for chat.
+- Office document extraction is text-based; it does not preserve complex layout, formulas, charts or slide visuals. Image-only/scanned PDFs need a separate OCR capability.
+- The Piston server is external to Aidroid. It must be controlled by the user or a trusted provider and configured with its own sandbox/container restrictions. Aidroid sends source code only after the in-app approval.
+- Email/calendar connectors open system apps; there is no background mail sending, direct calendar database access or silent event creation.
+- MCP client discovery, scoped plugin APIs and persistent tool execution audit history remain future work.
