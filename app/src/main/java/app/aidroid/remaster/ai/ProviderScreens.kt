@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 @Composable
@@ -57,7 +58,7 @@ fun ProviderModelsScreen(manager: ProviderManager) {
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("ПОДДЕРЖИВАЕМЫЕ ПОДКЛЮЧЕНИЯ", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold, letterSpacing = 1.1f)
+                    color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                 Text("OpenAI · Anthropic · Gemini · OpenAI-compatible · Ollama · llama.cpp",
                     color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                 Text("Для своего сервера укажи базовый URL и точный ID модели. API-ключи хранятся отдельно в Android Keystore.",
@@ -334,7 +335,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("АКТИВНАЯ МОДЕЛЬ", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1f)
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                 Box {
                     OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(active?.let { "${it.name} · ${it.model}" } ?: "Выбрать провайдера",
@@ -365,7 +366,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Text("РЕЖИМ РАЗМЫШЛЕНИЯ", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1f)
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                 ReasoningMode.entries.forEach { mode ->
                     FilterChip(
                         selected = preferences.reasoningMode == mode,
@@ -389,7 +390,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("ИНСТРУМЕНТЫ АГЕНТА", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1f)
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                 ToolPreferenceRow(
                     title = "Калькулятор",
                     description = "Безопасное вычисление арифметических выражений",
