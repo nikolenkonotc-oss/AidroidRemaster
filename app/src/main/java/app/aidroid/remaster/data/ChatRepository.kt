@@ -3,6 +3,7 @@ package app.aidroid.remaster.data
 import app.aidroid.remaster.data.local.ChatDao
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
+import app.aidroid.remaster.data.attachments.AttachmentJson
 import app.aidroid.remaster.data.attachments.AttachmentStorage
 import app.aidroid.remaster.data.attachments.StoredAttachment
 import app.aidroid.remaster.sync.FirebaseCloudSync
