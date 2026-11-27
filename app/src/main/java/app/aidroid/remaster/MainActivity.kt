@@ -923,7 +923,8 @@ private fun ChatWorkspace(
     ) { destinationChatId ->
         if (destinationChatId == null) {
             ChatListScreen(
-                chats = chats,
+                activeChats = activeChats,
+                archivedChats = archivedChats,
                 loading = loading,
                 archived = showArchived,
                 creatingChat = creatingChat,
@@ -998,7 +999,8 @@ private fun ConversationLoadingState() {
 
 @Composable
 private fun ChatListScreen(
-    chats: List<ChatEntity>,
+    activeChats: List<ChatEntity>,
+    archivedChats: List<ChatEntity>,
     loading: Boolean,
     archived: Boolean,
     creatingChat: Boolean,
@@ -1014,7 +1016,8 @@ private fun ChatListScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var renameTarget by remember { mutableStateOf<ChatEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<ChatEntity?>(null) }
-    val filtered = chats.filter { it.title.contains(query, ignoreCase = true) }
+    val filtered = (if (archived) archivedChats else activeChats)
+        .filter { it.title.contains(query, ignoreCase = true) }
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = 18.dp),
@@ -1024,37 +1027,21 @@ private fun ChatListScreen(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AnimatedContent(
-                targetState = archived,
-                modifier = Modifier.weight(1f),
-                transitionSpec = {
-                    (fadeIn(tween(230, easing = FastOutSlowInEasing)) +
-                        slideInVertically(
-                            initialOffsetY = { height -> height / 5 },
-                            animationSpec = tween(230, easing = FastOutSlowInEasing)
-                        )).togetherWith(
-                        fadeOut(tween(130, easing = FastOutSlowInEasing)) +
-                            slideOutVertically(
-                                targetOffsetY = { height -> -height / 10 },
-                                animationSpec = tween(130, easing = FastOutSlowInEasing)
-                            )
-                    )
-                },
-                label = "chat-list-header-transition"
-            ) { showArchive ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        if (showArchive) "Архив" else "Мои чаты",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        if (showArchive) "${filtered.size} сохранённых диалогов" else "${filtered.size} диалогов",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    if (archived) "Архив" else "Мои чаты",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (archived) "${filtered.size} сохранённых диалогов" else "${filtered.size} диалогов",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
             val addShape = CircleShape
@@ -1233,7 +1220,9 @@ private fun ChatListScreen(
                 },
                 label = "chat-list-body-transition"
             ) { showArchive ->
-                if (filtered.isEmpty()) {
+                val targetChats = (if (showArchive) archivedChats else activeChats)
+                    .filter { it.title.contains(query, ignoreCase = true) }
+                if (targetChats.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
                             Column(
@@ -1292,8 +1281,8 @@ private fun ChatListScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
                     ) {
-                        items(filtered, key = { it.id }) { chat ->
-                            Box(Modifier.fillMaxWidth().animateItem()) {
+                        items(targetChats, key = { it.id }) { chat ->
+                            Box(Modifier.fillMaxWidth()) {
                                 ChatListItem(
                                     chat,
                                     onOpen = { onOpen(chat.id) },
