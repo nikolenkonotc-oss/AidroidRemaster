@@ -41,6 +41,8 @@ class AgentRunner(
     suspend fun respondToChat(chatId: Long): AgentRunResult =
         chatLocks.computeIfAbsent(chatId) { Mutex() }.withLock { executeResponse(chatId) }
 
+    fun isToolEnabled(toolId: String): Boolean = toolId in providers.agentPreferences().enabledTools
+
     fun resolveAction(actionId: String, approved: Boolean) {
         actionReplies[actionId]?.complete(approved)
     }
