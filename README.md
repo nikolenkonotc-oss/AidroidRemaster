@@ -4,7 +4,11 @@ Personal-first Android AI agent. Local-first, provider-agnostic, user-controlled
 
 ## Project status
 
-**Aurora UI, local chat persistence and attachments / milestone 0.2.0-alpha.7**
+**Aurora UI, local chat persistence, attachments, Google accounts and Firebase sync / milestone 0.2.0-alpha.10**
+
+The account area supports a local profile and an explicit Google account chooser through Android Credential Manager. When a Firebase project is configured, Firebase Authentication verifies the Google identity and Cloud Firestore synchronizes profile fields and text chat history across devices. Custom profile avatars use Firebase Storage. See `docs/GOOGLE_AUTH_SETUP.md` for one-time project setup.
+
+Local mode remains available without registration. Room is still used for immediate local access. Chat and message deletion markers are synchronized to prevent deleted conversations from reappearing on another device. Binary chat attachments remain local to the device in this iteration.
 
 The app includes a Compose navigation shell, Aurora light/dark themes, animated transitions, Room-backed multi-chat history, local photo/file/camera attachments, an adaptive launcher icon, and animated message actions. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
 
@@ -22,13 +26,13 @@ The app includes a Compose navigation shell, Aurora light/dark themes, animated 
 Requirements:
 - JDK 17
 - Android SDK Platform 36 and Build Tools 36.0.0
-- Gradle 8.13 (or generate and commit the Gradle Wrapper)
+- Gradle 8.13 (or use the committed wrapper)
 
 From the repository root:
 
 ```bash
-gradle :app:testDebugUnitTest
-gradle :app:assembleDebug
+gradlew :app:testDebugUnitTest
+gradlew :app:assembleDebug
 ```
 
 Debug APK output:
@@ -41,7 +45,8 @@ The debug build uses the `.debug` application ID suffix, so it can be installed 
 
 ## Security principles
 
-- No API keys in source control.
+- No service-account credentials or private server secrets in the Android app.
+- Firebase user data is scoped by authenticated Firebase UID and protected by owner-only Firestore / Storage rules.
 - No silent cloud fallback for private/local tasks.
 - Cloud access must follow explicit user policy and approval settings.
 - Android system integrations must use official APIs and user-consented flows.
@@ -62,23 +67,6 @@ The debug build uses the `.debug` application ID suffix, so it can be installed 
 
 Apache License 2.0. See [LICENSE](LICENSE).
 
-## Alpha 0.2.0-alpha.6
-Chat messages can now include local file, photo-picker, and camera attachments. Attachments are copied into private app storage and remain linked to the saved message.
+## UI and interaction milestones
 
-
-## Alpha.6 — launcher icon and animations
-
-See `docs/ANIMATION_ICON_ALPHA6.md` for the adaptive crystal icon, conversation loading-state fix, message animations, and navigation motion updates.
-
-
-## Alpha 0.2.0-alpha.7 — UI polish
-
-- Refined Aurora Light colors and glass surfaces; removed the hard-edged hero sheen layer.
-- Replaced the attachment popup with an animated Material 3 bottom sheet.
-- Added animated inline feedback for attachment, open-file, send, and delete errors.
-- Added per-message copy and delete actions; deleting a message also removes its private attachment files.
-- Added clickable HTTP/HTTPS links and animated expand/collapse for long messages.
-- New messages animate on insertion; message deletion and list movement use lazy-item animations.
-- Send operation now keeps the draft and attachments when the database write fails.
-
-See `docs/UI_POLISH_ALPHA7.md` for details.
+Earlier alpha notes are retained in the `docs/` directory.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OAuth 2.0 Web application client ID used by Credential Manager. -->
+    <string name="google_web_client_id" translatable="false">436564981726-10qit262njagksd8jkv5klrrvlnkkvtl.apps.googleusercontent.com</string>
+
+    <!-- Firebase Android app configuration. -->
+    <string name="firebase_api_key" translatable="false">AIzaSyBkqOp9YZmHc__O2436XHROqmpg8PDcAxw</string>
+    <string name="firebase_application_id" translatable="false">1:436564981726:android:612808b572db2a273b4f4f</string>
+    <string name="firebase_project_id" translatable="false">aidroid-remaster</string>
+    <string name="firebase_storage_bucket" translatable="false">aidroid-remaster.firebasestorage.app</string>
+</resources>

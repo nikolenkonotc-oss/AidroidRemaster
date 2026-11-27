@@ -1,9 +1,8 @@
-
 name: Android CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, fix/compose-ui-root-causes ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
@@ -36,6 +35,37 @@ jobs:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
 
+      # Use the same debug key whose SHA-1 is registered in Firebase.
+      # Store its Base64 contents in the AIDROID_DEBUG_KEYSTORE_BASE64
+      # repository Actions secret; never commit the keystore itself.
+      - name: Restore Firebase debug signing key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.AIDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "::notice::No Firebase signing secret is exposed to this pull request. CI will use a temporary debug key for verification only."
+              exit 0
+            fi
+            echo "::error::AIDROID_DEBUG_KEYSTORE_BASE64 is missing. Add the Firebase-registered debug keystore as a repository Actions secret."
+            exit 1
+          fi
+
+          KEYSTORE_FILE="$RUNNER_TEMP/aidroid-debug.keystore"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          mkdir -p "$HOME/.android" "$HOME/.config/.android"
+          cp "$KEYSTORE_FILE" "$HOME/.android/debug.keystore"
+          cp "$KEYSTORE_FILE" "$HOME/.config/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore" "$HOME/.config/.android/debug.keystore"
+
+          ACTUAL_SHA1="$(keytool -list -v -keystore "$HOME/.config/.android/debug.keystore" -storepass android 2>/dev/null | awk -F': ' '/SHA1:/{print $2; exit}' | tr -d ':[:space:]')"
+          EXPECTED_SHA1="580668B4C952237D28D8D2B6E0B807A8296E7F68"
+          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "::error::The configured keystore SHA-1 ($ACTUAL_SHA1) does not match the Firebase fingerprint expected by this project."
+            exit 1
+          fi
+          echo "Verified Firebase debug signing SHA-1: $ACTUAL_SHA1"
+
       - name: Install Android platform
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
@@ -44,6 +74,9 @@ jobs:
 
       - name: Assemble debug APK
         run: gradle :app:assembleDebug
+
+      - name: Report debug signing certificate
+        run: gradle :app:signingReport
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
