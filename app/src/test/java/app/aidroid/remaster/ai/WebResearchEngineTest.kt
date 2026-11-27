@@ -3,6 +3,7 @@ package app.aidroid.remaster.ai
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.json.*
 import org.junit.Test
 
 class WebResearchEngineTest {
@@ -38,19 +39,17 @@ class WebResearchEngineTest {
 
     @Test
     fun parsesWikipediaSearchApiResults() {
-        val json = """
-            {
-              "query": {
-                "search": [
-                  {
-                    "pageid": 12345,
-                    "title": "Grand Theft Auto VI",
-                    "snippet": ""snippet": "An upcoming <span>video game</span>."
-                  }
-                ]
-              }
+        val json = buildJsonObject {
+            putJsonObject("query") {
+                putJsonArray("search") {
+                    add(buildJsonObject {
+                        put("pageid", 12345)
+                        put("title", "Grand Theft Auto VI")
+                        put("snippet", "An upcoming <span>video game</span>.")
+                    })
+                }
             }
-        """.trimIndent()
+        }.toString()
 
         val result = WebHtmlParser.parseWikipediaSearch(json, "en").single()
 
