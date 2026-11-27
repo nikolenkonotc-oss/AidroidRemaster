@@ -10,7 +10,9 @@ data class AccountProfile(
     val status: String = "На связи",
     val email: String = "",
     val avatarUri: String = "",
-    val googlePhotoUrl: String = ""
+    val googlePhotoUrl: String = "",
+    val cloudAvatarUrl: String = "",
+    val syncedAvatarUri: String = ""
 ) {
     val isSignedIn: Boolean get() = accountType == "local" || accountType == "google"
 }
@@ -29,7 +31,9 @@ class AccountProfileStore(context: Context) {
         status = preferences.getString("status", "На связи").orEmpty(),
         email = preferences.getString("email", "").orEmpty(),
         avatarUri = preferences.getString("avatar_uri", "").orEmpty(),
-        googlePhotoUrl = preferences.getString("google_photo_url", "").orEmpty()
+        googlePhotoUrl = preferences.getString("google_photo_url", "").orEmpty(),
+        cloudAvatarUrl = preferences.getString("cloud_avatar_url", "").orEmpty(),
+        syncedAvatarUri = preferences.getString("synced_avatar_uri", "").orEmpty()
     )
 
     fun save(profile: AccountProfile) {
@@ -42,6 +46,12 @@ class AccountProfileStore(context: Context) {
             .putString("email", profile.email)
             .putString("avatar_uri", profile.avatarUri)
             .putString("google_photo_url", profile.googlePhotoUrl)
+            .putString("cloud_avatar_url", profile.cloudAvatarUrl)
+            .putString("synced_avatar_uri", profile.syncedAvatarUri)
             .apply()
+    }
+
+    fun clear() {
+        preferences.edit().clear().apply()
     }
 }
