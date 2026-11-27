@@ -172,7 +172,7 @@ private fun ProviderEditorDialog(
     var baseUrl by remember(initial?.id) { mutableStateOf(initial?.baseUrl ?: defaultBaseUrl(ProviderType.OPENAI)) }
     var model by remember(initial?.id) { mutableStateOf(initial?.model.orEmpty()) }
     var apiKey by remember(initial?.id) { mutableStateOf("") }
-    var supportsReasoning by remember(initial?.id) { mutableStateOf(initial?.supportsReasoning ?: (initial?.type ?: ProviderType.OPENAI) in setOf(ProviderType.OPENAI, ProviderType.ANTHROPIC, ProviderType.GEMINI)) }
+    var supportsReasoning by remember(initial?.id) { mutableStateOf(initial?.supportsReasoning ?: false) }
     var typeMenu by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -198,7 +198,7 @@ private fun ProviderEditorDialog(
                                 onClick = {
                                     type = option
                                     baseUrl = defaultBaseUrl(option)
-                                    supportsReasoning = option in setOf(ProviderType.OPENAI, ProviderType.ANTHROPIC, ProviderType.GEMINI)
+                                    supportsReasoning = false
                                     if (name.isBlank()) name = option.displayName()
                                     typeMenu = false
                                 }
