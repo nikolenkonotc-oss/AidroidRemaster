@@ -3,16 +3,17 @@ package app.aidroid.remaster.data
 import app.aidroid.remaster.data.local.ChatDao
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
-import app.aidroid.remaster.data.attachments.AttachmentJson
 import app.aidroid.remaster.data.attachments.AttachmentStorage
 import app.aidroid.remaster.data.attachments.StoredAttachment
+import app.aidroid.remaster.sync.FirebaseCloudSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 class ChatRepository(
     private val dao: ChatDao,
-    private val attachmentStorage: AttachmentStorage
+    private val attachmentStorage: AttachmentStorage,
+    private val cloudSync: FirebaseCloudSync? = null
 ) {
     fun activeChats(): Flow<List<ChatEntity>> = dao.observeActiveChats()
     fun archivedChats(): Flow<List<ChatEntity>> = dao.observeArchivedChats()
@@ -20,7 +21,9 @@ class ChatRepository(
 
     suspend fun createChat(): Long {
         val now = System.currentTimeMillis()
-        return dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
+        val id = dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
+        syncCloudSafely()
+        return id
     }
 
     suspend fun sendUserMessage(chatId: Long, text: String, attachments: List<StoredAttachment> = emptyList()) {
@@ -45,36 +48,48 @@ class ChatRepository(
         } else {
             dao.touchChat(chatId, now)
         }
+        syncCloudSafely()
     }
 
     suspend fun rename(chatId: Long, title: String) {
         val clean = title.trim()
-        if (clean.isNotEmpty()) dao.renameChat(chatId, clean.take(64), System.currentTimeMillis())
+        if (clean.isNotEmpty()) {
+            dao.renameChat(chatId, clean.take(64), System.currentTimeMillis())
+            syncCloudSafely()
+        }
     }
 
     suspend fun setPinned(chat: ChatEntity, pinned: Boolean) {
-        dao.setPinned(chat.id, pinned)
+        dao.setPinned(chat.id, pinned, System.currentTimeMillis())
+        syncCloudSafely()
     }
 
     suspend fun setArchived(chat: ChatEntity, archived: Boolean) {
-        dao.setArchived(chat.id, archived)
+        dao.setArchived(chat.id, archived, System.currentTimeMillis())
+        syncCloudSafely()
     }
 
     suspend fun delete(chat: ChatEntity) {
-        val storedAttachments = dao.getMessages(chat.id)
-            .flatMap { AttachmentJson.decode(it.attachmentsJson) }
-        withContext(Dispatchers.IO) {
-            storedAttachments.forEach(attachmentStorage::delete)
-        }
-        dao.deleteChat(chat)
+        // Keep a tombstone so a deletion is propagated to the user's other devices.
+        dao.softDeleteChat(chat.id, System.currentTimeMillis())
+        syncCloudSafely()
     }
 
     suspend fun deleteMessage(message: MessageEntity) {
-        dao.deleteMessage(message)
-        withContext(Dispatchers.IO) {
-            AttachmentJson.decode(message.attachmentsJson).forEach(attachmentStorage::delete)
-        }
+        // Message tombstones prevent deleted messages from reappearing during cloud merge.
+        dao.softDeleteMessage(message.id, System.currentTimeMillis())
+        syncCloudSafely()
     }
 
     suspend fun getChat(chatId: Long): ChatEntity? = dao.getChat(chatId)
+
+    suspend fun syncNow() {
+        cloudSync?.syncChats(dao)
+    }
+
+    private suspend fun syncCloudSafely() {
+        if (cloudSync?.isSignedIn == true) {
+            runCatching { cloudSync.syncChats(dao) }
+        }
+    }
 }
