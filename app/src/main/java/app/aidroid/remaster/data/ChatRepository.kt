@@ -46,9 +46,10 @@ class ChatRepository(
 
     suspend fun createChat(): Long {
         val now = System.currentTimeMillis()
-        // Persist locally and return immediately. The UI starts cloud sync separately
-        // after switching to the new conversation so Firestore latency cannot stall navigation.
-        return dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
+        // Persist locally first; cloud sync is queued independently.
+        val id = dao.insertChat(ChatEntity(createdAt = now, updatedAt = now))
+        requestCloudSync()
+        return id
     }
 
     suspend fun sendUserMessage(chatId: Long, text: String, attachments: List<StoredAttachment> = emptyList()) {
@@ -80,18 +81,18 @@ class ChatRepository(
         val clean = title.trim()
         if (clean.isNotEmpty()) {
             dao.renameChat(chatId, clean.take(64), System.currentTimeMillis())
-            syncCloudSafely()
+            requestCloudSync()
         }
     }
 
     suspend fun setPinned(chat: ChatEntity, pinned: Boolean) {
         dao.setPinned(chat.id, pinned, System.currentTimeMillis())
-        syncCloudSafely()
+        requestCloudSync()
     }
 
     suspend fun setArchived(chat: ChatEntity, archived: Boolean) {
         dao.setArchived(chat.id, archived, System.currentTimeMillis())
-        syncCloudSafely()
+        requestCloudSync()
     }
 
     suspend fun delete(chat: ChatEntity) {
@@ -99,7 +100,7 @@ class ChatRepository(
         val storedAttachments = dao.getMessages(chat.id)
             .flatMap { AttachmentJson.decode(it.attachmentsJson) }
         dao.softDeleteChat(chat.id, System.currentTimeMillis())
-        syncCloudSafely()
+        requestCloudSync()
         withContext(Dispatchers.IO) {
             storedAttachments.forEach(attachmentStorage::delete)
         }
@@ -109,7 +110,7 @@ class ChatRepository(
         // Message tombstones prevent deleted messages from reappearing during cloud merge.
         val storedAttachments = AttachmentJson.decode(message.attachmentsJson)
         dao.softDeleteMessage(message.id, System.currentTimeMillis())
-        syncCloudSafely()
+        requestCloudSync()
         withContext(Dispatchers.IO) {
             storedAttachments.forEach(attachmentStorage::delete)
         }
