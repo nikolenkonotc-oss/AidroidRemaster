@@ -91,6 +91,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -1942,9 +1944,9 @@ private fun ConversationScreen(
                                 }
                             }
                             val messageInteraction = remember(message.id) { MutableInteractionSource() }
-                            val messagePressed by messageInteraction.collectIsPressedAsState()
+                            var messageTouchPressed by remember(message.id) { mutableStateOf(false) }
                             val messagePressScale by animateFloatAsState(
-                                targetValue = if (messagePressed) 0.985f else 1f,
+                                targetValue = if (messageTouchPressed) 0.985f else 1f,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMedium
@@ -1991,6 +1993,24 @@ private fun ConversationScreen(
                                             translationY = (1f - progress) * 14.dp.toPx()
                                         }
                                         .clip(RoundedCornerShape(21.dp))
+                                        // Observe the press in the Initial pass so nested text/link
+                                        // controls do not steal the card's press animation.
+                                        .pointerInput(message.id) {
+                                            awaitEachGesture {
+                                                awaitFirstDown(
+                                                    requireUnconsumed = false,
+                                                    pass = PointerEventPass.Initial
+                                                )
+                                                messageTouchPressed = true
+                                                try {
+                                                    do {
+                                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                    } while (event.changes.any { it.pressed })
+                                                } finally {
+                                                    messageTouchPressed = false
+                                                }
+                                            }
+                                        }
                                         .combinedClickable(
                                             interactionSource = messageInteraction,
                                             indication = null,
