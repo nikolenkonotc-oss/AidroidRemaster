@@ -61,6 +61,7 @@ class WebResearchEngineTest {
         assertEquals("https://news.google.com/rss/articles/example?source=feed&id=7", result.url)
         assertEquals("Latest confirmed details & context.", result.snippet)
         assertEquals("Google News", result.source)
+        assertEquals("Sat, 28 Nov 2026 10:30:00 GMT", result.publishedAt)
     }
 
     @Test
