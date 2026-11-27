@@ -104,6 +104,10 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import app.aidroid.remaster.ai.AgentRunner
+import app.aidroid.remaster.ai.AgentWorkspaceScreen
+import app.aidroid.remaster.ai.ProviderManager
+import app.aidroid.remaster.ai.ProviderModelsScreen
 import app.aidroid.remaster.data.ChatRepository
 import app.aidroid.remaster.data.AccountProfile
 import app.aidroid.remaster.data.AccountProfileStore
@@ -165,12 +169,14 @@ class MainActivity : ComponentActivity() {
         val attachmentStorage = AttachmentStorage(applicationContext)
         val cloudSync = FirebaseCloudSync(applicationContext)
         val repository = ChatRepository(database.chatDao(), attachmentStorage, cloudSync)
-        setContent { AidroidApp(repository, cloudSync) }
+        val providerManager = ProviderManager(applicationContext)
+        val agentRunner = AgentRunner(providerManager, database.chatDao(), repository)
+        setContent { AidroidApp(repository, cloudSync, providerManager, agentRunner) }
     }
 }
 
 @Composable
-private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync) {
+private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync, providerManager: ProviderManager, agentRunner: AgentRunner) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val themePreferences = remember(context) {
         context.getSharedPreferences("aidroid_remaster_preferences", Context.MODE_PRIVATE)
@@ -326,17 +332,14 @@ private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync)
                             )
                             Screen.CHAT -> ChatWorkspace(
                                 repository = repository,
+                                agentRunner = agentRunner,
                                 chatLists = chatLists,
                                 selectedChatId = selectedChatId,
                                 onSelectChat = { selectedChatId = it },
                                 onBackToChats = { selectedChatId = null }
                             )
-                            Screen.AGENT -> PlaceholderScreen("Рабочее пространство агента", "Здесь появятся инструменты, задачи и журнал действий агента.",
-                                Icons.Filled.SmartToy
-                            )
-                            Screen.MODELS -> PlaceholderScreen("Модели и провайдеры", "Локальные модели, облачные API и Hybrid Model Router.",
-                                Icons.Filled.Storage
-                            )
+                            Screen.AGENT -> AgentWorkspaceScreen(providerManager)
+                            Screen.MODELS -> ProviderModelsScreen(providerManager)
                             Screen.SETTINGS -> {
                                 AnimatedContent(
                                     targetState = accountPageOpen,
@@ -532,7 +535,7 @@ private fun AuroraBackdrop(dark: Boolean) {
 }
 
 @Composable
-private fun GlassPanel(
+internal fun GlassPanel(
     modifier: Modifier = Modifier,
     cornerRadius: Int = 26,
     highlighted: Boolean = false,
@@ -843,6 +846,7 @@ private fun AidroidBottomBar(selectedScreen: Screen, onSelect: (Screen) -> Unit)
 @Composable
 private fun ChatWorkspace(
     repository: ChatRepository,
+    agentRunner: AgentRunner,
     chatLists: Pair<List<ChatEntity>, List<ChatEntity>>?,
     selectedChatId: Long?,
     onSelectChat: (Long?) -> Unit,
@@ -973,6 +977,7 @@ private fun ChatWorkspace(
                     onBack = onBackToChats,
                     onSend = { text, attachments ->
                         repository.sendUserMessage(destinationChat.id, text, attachments)
+                        agentRunner.respondToChat(destinationChat.id)
                     },
                     onDeleteMessage = { message -> repository.deleteMessage(message) },
                     onRename = { title -> scope.launch { repository.rename(destinationChat.id, title) } }
@@ -1504,6 +1509,7 @@ private fun ConversationScreen(
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
+    var pendingAgentRequests by remember(chat.id) { mutableIntStateOf(0) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
 
@@ -1635,13 +1641,16 @@ private fun ConversationScreen(
         localText = ""
         pendingAttachments.clear()
         attachmentError = null
+        pendingAgentRequests++
         scope.launch {
             try {
                 onSend(text, attachments)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                attachmentError = "Не удалось сохранить сообщение: ${error.message ?: "попробуй ещё раз"}"
+                attachmentError = "Не удалось отправить запрос: ${error.message ?: "попробуй ещё раз"}"
+            } finally {
+                pendingAgentRequests = (pendingAgentRequests - 1).coerceAtLeast(0)
             }
         }
     }
@@ -1887,6 +1896,24 @@ private fun ConversationScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
+                AnimatedVisibility(
+                    visible = pendingAgentRequests > 0,
+                    enter = fadeIn(tween(160)) + expandVertically(tween(180)),
+                    exit = fadeOut(tween(110)) + shrinkVertically(tween(140))
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
+                        Text(
+                            if (pendingAgentRequests == 1) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
                 if (pendingAttachments.isNotEmpty()) {
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
