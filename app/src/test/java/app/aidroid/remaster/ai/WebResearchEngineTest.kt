@@ -56,6 +56,34 @@ class WebResearchEngineTest {
     }
 
     @Test
+    fun parsesDnsOverHttpsAnswersAndFiltersPrivateAddresses() {
+        val response = """
+            {
+              "Status": 0,
+              "Answer": [
+                {"name":"example.com","type":1,"TTL":60,"data":"1.1.1.1"},
+                {"name":"example.com","type":1,"TTL":60,"data":"192.168.1.10"},
+                {"name":"example.com","type":1,"TTL":60,"data":"127.0.0.1"},
+                {"name":"example.com","type":28,"TTL":60,"data":"2606:4700:4700::1111"}
+              ]
+            }
+        """.trimIndent()
+
+        val ipv4 = PublicDnsAnswerParser.parse(response, expectedType = 1)
+        val ipv6 = PublicDnsAnswerParser.parse(response, expectedType = 28)
+
+        assertEquals(listOf("1.1.1.1"), ipv4.map { it.hostAddress })
+        assertEquals(1, ipv6.size)
+        assertTrue(ipv6.single().hostAddress.contains(":"))
+    }
+
+    @Test
+    fun returnsNoDnsAnswersForNonZeroResolverStatus() {
+        val response = """{"Status":3,"Answer":[{"type":1,"data":"1.1.1.1"}]}"""
+        assertTrue(PublicDnsAnswerParser.parse(response, expectedType = 1).isEmpty())
+    }
+
+    @Test
     fun rejectsLocalAndNonHttpUrls() {
         assertFalse(WebResearchEngine.isSafeUrlSyntax("http://127.0.0.1:8080/"))
         assertFalse(WebResearchEngine.isSafeUrlSyntax("http://localhost/"))
