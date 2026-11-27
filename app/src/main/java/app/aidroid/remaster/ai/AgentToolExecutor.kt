@@ -150,7 +150,7 @@ class AgentToolExecutor(
             ?: throw IllegalStateException("API генерации не вернул изображение.")
         val imageBytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
         val attachment = attachmentStorage.saveGeneratedImage(imageBytes, "aidroid_generated")
-        AgentToolResult(
+        return AgentToolResult(
             text = "Изображение создано и добавлено к ответу. Его можно открыть прямо в чате.",
             attachments = listOf(attachment)
         )
@@ -187,7 +187,7 @@ class AgentToolExecutor(
             ?: throw IllegalStateException("API редактирования не вернул изображение.")
         val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
         val attachment = attachmentStorage.saveGeneratedImage(bytes, "aidroid_edited")
-        AgentToolResult(
+        return AgentToolResult(
             text = "Изображение отредактировано. Новая версия прикреплена к ответу; исходник не изменён.",
             attachments = listOf(attachment)
         )
