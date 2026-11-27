@@ -1,6 +1,8 @@
 package app.aidroid.remaster
 
 import android.os.Bundle
+import android.app.Activity
+import android.content.ContextWrapper
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -102,6 +104,9 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.aidroid.remaster.data.ChatRepository
+import app.aidroid.remaster.data.AccountProfile
+import app.aidroid.remaster.data.AccountProfileStore
+import app.aidroid.remaster.auth.GoogleAuthClient
 import app.aidroid.remaster.data.attachments.AttachmentJson
 import app.aidroid.remaster.data.attachments.AttachmentStorage
 import app.aidroid.remaster.data.attachments.StoredAttachment
@@ -115,6 +120,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.launch
 
 private val Violet = Color(0xFF9270F5)
@@ -157,11 +164,23 @@ private fun AidroidApp(repository: ChatRepository) {
     LaunchedEffect(darkTheme, themePreferences) {
         themePreferences.edit().putBoolean("dark_theme", darkTheme).apply()
     }
+    val accountStore = remember(context) { AccountProfileStore(context) }
+    val googleAuthClient = remember(context) { GoogleAuthClient(context) }
+    val coroutineScope = rememberCoroutineScope()
+    var accountProfile by remember { mutableStateOf(accountStore.load()) }
+    LaunchedEffect(accountProfile) { accountStore.save(accountProfile) }
+    var accountPageOpen by rememberSaveable { mutableStateOf(false) }
+    var googleSignInLoading by rememberSaveable { mutableStateOf(false) }
+    var accountError by rememberSaveable { mutableStateOf<String?>(null) }
+
     var selectedScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var selectedChatId by rememberSaveable { mutableStateOf<Long?>(null) }
 
-    BackHandler(enabled = selectedChatId != null || selectedScreen != Screen.HOME) {
-        if (selectedScreen == Screen.CHAT && selectedChatId != null) {
+    BackHandler(enabled = accountPageOpen || selectedChatId != null || selectedScreen != Screen.HOME) {
+        if (accountPageOpen) {
+            accountPageOpen = false
+            accountError = null
+        } else if (selectedScreen == Screen.CHAT && selectedChatId != null) {
             selectedChatId = null
         } else {
             selectedChatId = null
@@ -258,7 +277,83 @@ private fun AidroidApp(repository: ChatRepository) {
                             Screen.MODELS -> PlaceholderScreen("Модели и провайдеры", "Локальные модели, облачные API и Hybrid Model Router.",
                                 Icons.Filled.Storage
                             )
-                            Screen.SETTINGS -> SettingsScreen(darkTheme) { darkTheme = it }
+                            Screen.SETTINGS -> {
+                                if (accountPageOpen) {
+                                    AccountScreen(
+                                        profile = accountProfile,
+                                        googleLoading = googleSignInLoading,
+                                        errorMessage = accountError,
+                                        onBack = {
+                                            accountPageOpen = false
+                                            accountError = null
+                                        },
+                                        onProfileChange = { accountProfile = it },
+                                        onLocalContinue = {
+                                            accountProfile = accountProfile.copy(
+                                                accountType = "local",
+                                                displayName = accountProfile.displayName.ifBlank { "Пользователь" },
+                                                username = accountProfile.username.ifBlank { "user" }
+                                            )
+                                            accountError = null
+                                        },
+                                        onGoogleSignIn = {
+                                            val activity = context.findActivity()
+                                            if (activity == null) {
+                                                accountError = "Не удалось открыть окно входа. Перезапусти приложение и попробуй снова."
+                                            } else {
+                                                coroutineScope.launch {
+                                                    googleSignInLoading = true
+                                                    accountError = null
+                                                    try {
+                                                        val google = googleAuthClient.signIn(activity)
+                                                        accountProfile = accountProfile.copy(
+                                                            accountType = "google",
+                                                            displayName = google.displayName,
+                                                            username = accountProfile.username.ifBlank {
+                                                                google.email.substringBefore("@").replace(Regex("[^A-Za-z0-9_]"), "")
+                                                            },
+                                                            email = google.email,
+                                                            googlePhotoUrl = google.photoUrl.orEmpty()
+                                                        )
+                                                    } catch (cancelled: CancellationException) {
+                                                        throw cancelled
+                                                    } catch (error: Exception) {
+                                                        accountError = error.message ?: "Не удалось выполнить вход через Google."
+                                                    } finally {
+                                                        googleSignInLoading = false
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onSignOut = {
+                                            coroutineScope.launch {
+                                                if (accountProfile.accountType == "google") {
+                                                    try {
+                                                        googleAuthClient.signOut()
+                                                    } catch (error: Exception) {
+                                                        accountError = "Не удалось очистить сессию Google: ${error.message ?: "ошибка"}"
+                                                    }
+                                                }
+                                                accountProfile = accountProfile.copy(
+                                                    accountType = "",
+                                                    email = "",
+                                                    googlePhotoUrl = ""
+                                                )
+                                            }
+                                        }
+                                    )
+                                } else {
+                                    SettingsScreen(
+                                        darkTheme = darkTheme,
+                                        onThemeChange = { darkTheme = it },
+                                        profile = accountProfile,
+                                        onOpenAccount = {
+                                            accountError = null
+                                            accountPageOpen = true
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
