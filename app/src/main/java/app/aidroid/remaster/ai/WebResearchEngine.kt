@@ -100,6 +100,17 @@ class WebResearchEngine {
                 .onFailure { errors += "Google News RSS: ${it.message}" }
         }
 
+        // MediaWiki's documented Action API provides a keyless encyclopedia fallback.
+        // It complements news search but is not presented as a source of current events.
+        if (found.size < 5) {
+            runCatching { searchWikipedia(query) }
+                .onSuccess { hits ->
+                    hits.forEach { found.putIfAbsent(it.url, it) }
+                    if (hits.isEmpty()) errors += "Wikipedia: справочный поиск не нашёл страниц"
+                }
+                .onFailure { errors += "Wikipedia: ${it.message}" }
+        }
+
         if (found.isEmpty()) {
             val detail = errors.take(3).joinToString("; ").ifBlank { "источники не вернули результатов" }
             throw IOException("Поиск не получил результатов. Это может быть DNS/сеть, CAPTCHA или ограничение источника. Подробности: $detail")
@@ -219,6 +230,27 @@ class WebResearchEngine {
             .build()
         val html = executeSearchHtml(request)
         return WebHtmlParser.parseMojeek(html)
+    }
+
+    private fun searchWikipedia(query: String): List<WebSearchHit> {
+        val language = Locale.getDefault().language
+            .takeIf { it.matches(Regex("[a-z]{2,3}")) }
+            ?: "en"
+        val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
+        val url = "https://$language.wikipedia.org/w/api.php?action=query&list=search" +
+            "&srsearch=$encodedQuery&format=json&utf8=1&srlimit=6"
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "AidroidRemaster/0.2 (Android; MediaWiki search client)")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        searchClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+            val body = response.body?.string().orEmpty()
+            if (body.length > MAX_SEARCH_BYTES) throw IOException("ответ слишком большой")
+            return WebHtmlParser.parseWikipediaSearch(body, language)
+        }
     }
 
     private fun searchGoogleNews(query: String, freshness: String): List<WebSearchHit> {
@@ -482,6 +514,21 @@ internal object WebHtmlParser {
 
     fun parseMojeek(html: String, limit: Int = 8): List<WebSearchHit> =
         parseResultAnchors(html, "ob", "s", limit, "Mojeek")
+
+    fun parseWikipediaSearch(jsonBody: String, language: String, limit: Int = 8): List<WebSearchHit> {
+        val root = Json.parseToJsonElement(jsonBody).jsonObject
+        val rows = root["query"]?.jsonObject?.get("search")?.jsonArray.orEmpty()
+        return rows.mapNotNull { item ->
+            val row = item.jsonObject
+            val title = row["title"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+            val pageId = row["pageid"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                ?: return@mapNotNull null
+            if (title.isBlank()) return@mapNotNull null
+            val snippet = stripHtml(row["snippet"]?.jsonPrimitive?.contentOrNull.orEmpty()).take(900)
+            val url = "https://$language.wikipedia.org/?curid=$pageId"
+            WebSearchHit(title.take(300), url, snippet, "Wikipedia ($language)")
+        }.take(limit)
+    }
 
     fun parseGoogleNewsRss(xml: String, limit: Int = 8): List<WebSearchHit> {
         val itemPattern = Regex("""(?is)<item\b[^>]*>(.*?)</item\s*>""")
