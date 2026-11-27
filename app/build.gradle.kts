@@ -14,8 +14,8 @@ android {
         applicationId = "app.aidroid.remaster"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.2.0-alpha.7"
+        versionCode = 9
+        versionName = "0.2.0-alpha.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
