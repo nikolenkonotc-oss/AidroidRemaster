@@ -67,12 +67,12 @@ class WebResearchEngine {
 
         runCatching { searchDuckDuckGo(query, freshness) }
             .onSuccess { hits -> hits.forEach { found.putIfAbsent(it.url, it) } }
-            .onFailure { errors += "DuckDuckGo: ${it.message" }
+            .onFailure { errors += "DuckDuckGo: ${it.message}" }
 
         if (found.size < 5) {
             runCatching { searchMojeek(query) }
                 .onSuccess { hits -> hits.forEach { found.putIfAbsent(it.url, it) } }
-                .onFailure { errors += "Mojeek: ${it.message" }
+                .onFailure { errors += "Mojeek: ${it.message}" }
         }
 
         if (found.isEmpty()) {
@@ -133,7 +133,7 @@ class WebResearchEngine {
                     val (title, text) = if (type == "text/html" || type == "application/xhtml+xml" || type.isBlank()) {
                         WebHtmlParser.extractPage(raw)
                     } else {
-                        "", WebHtmlParser.normalizePlainText(raw)
+                        Pair("", WebHtmlParser.normalizePlainText(raw))
                     }
                     if (text.isBlank()) throw IOException("На странице не удалось извлечь читаемый текст.")
                     page = WebPageContent(
@@ -198,7 +198,7 @@ class WebResearchEngine {
 
     private fun executeSearchHtml(request: Request): String {
         searchClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("HTTP ${response.code")
+            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
             val body = response.body ?: throw IOException("пустой ответ")
             if (body.contentLength() > MAX_SEARCH_BYTES) throw IOException("ответ слишком большой")
             val bytes = body.byteStream().use { input ->
