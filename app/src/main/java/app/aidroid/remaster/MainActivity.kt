@@ -519,7 +519,7 @@ private fun GlowButton(text: String, onClick: () -> Unit) {
         Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(glow, shape, clip = false)
             .clip(shape)
-            .background(buttonBrush)
+            .background(buttonBrush, shape)
             .border(1.dp, Color.White.copy(alpha = if (pressed || hovered) 0.82f else 0.45f), shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
@@ -748,11 +748,12 @@ private fun ChatListScreen(
                     .background(
                         Brush.linearGradient(
                             listOf(
-                                                Color(0xFFD0BCFF).copy(alpha = 0.90f),
-                                                Color(0xFF9272E6).copy(alpha = 0.86f),
-                                                Color(0xFF7251C5).copy(alpha = 0.90f)
-                                            )
-                        )
+                                Color(0xFFD0BCFF).copy(alpha = 0.90f),
+                                Color(0xFF9272E6).copy(alpha = 0.86f),
+                                Color(0xFF7251C5).copy(alpha = 0.90f)
+                            )
+                        ),
+                        addShape
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
                     .pressScaleClickable(onClick = onCreate),
@@ -1031,14 +1032,15 @@ private fun ChatListItem(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 val menuShape = RoundedCornerShape(22.dp)
-                DropdownMenu(
-                    expanded = menu,
-                    onDismissRequest = { menu = false },
-                    modifier = Modifier
-                        .clip(menuShape)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.985f))
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), menuShape)
-                ) {
+                MaterialTheme(shapes = MaterialTheme.shapes.copy(extraSmall = menuShape)) {
+                    DropdownMenu(
+                        expanded = menu,
+                        onDismissRequest = { menu = false },
+                        modifier = Modifier
+                            .clip(menuShape)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.985f), menuShape)
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), menuShape)
+                    ) {
                     Column(
                         Modifier.padding(vertical = 7.dp),
                         verticalArrangement = Arrangement.spacedBy(3.dp)
@@ -1072,6 +1074,7 @@ private fun ChatListItem(
                             destructive = true,
                             onClick = { menu = false; onDelete() }
                         )
+                    }
                     }
                 }
             }
@@ -1112,7 +1115,7 @@ private fun AuroraMenuItem(
             .padding(horizontal = 6.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
-            .background(background)
+            .background(background, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1150,8 +1153,6 @@ private fun ConversationScreen(
     var isSending by remember { mutableStateOf(false) }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
-    var knownMessageIds by remember(chat.id) { mutableStateOf<Set<Long>?>(null) }
-    var enteringMessageIds by remember(chat.id) { mutableStateOf<Set<Long>>(emptySet()) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
 
@@ -1160,23 +1161,6 @@ private fun ConversationScreen(
             uiNotice = message
             delay(2200)
             if (uiNotice == message) uiNotice = null
-        }
-    }
-
-    LaunchedEffect(messages) {
-        val current = messages ?: return@LaunchedEffect
-        val currentIds = current.mapTo(mutableSetOf()) { it.id }
-        val previousIds = knownMessageIds
-        if (previousIds == null) {
-            knownMessageIds = currentIds
-        } else {
-            val entering = currentIds - previousIds
-            knownMessageIds = currentIds
-            if (entering.isNotEmpty()) {
-                enteringMessageIds = enteringMessageIds + entering
-                delay(560)
-                enteringMessageIds = enteringMessageIds - entering
-            }
         }
     }
 
@@ -1369,7 +1353,6 @@ private fun ConversationScreen(
                                     }
                                 }
                             }
-                            val isNewMessage = enteringMessageIds.contains(message.id)
                             val messageInteraction = remember(message.id) { MutableInteractionSource() }
                             val messagePressed by messageInteraction.collectIsPressedAsState()
                             val messagePressScale by animateFloatAsState(
@@ -1380,32 +1363,17 @@ private fun ConversationScreen(
                                 ),
                                 label = "message-press-scale-${message.id}"
                             )
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = !isNewMessage,
-                                enter = fadeIn(tween(180, easing = FastOutSlowInEasing)) +
-                                    slideInVertically(tween(340, easing = FastOutSlowInEasing)) { it / 2 } +
-                                    scaleIn(
-                                        initialScale = 0.88f,
-                                        animationSpec = spring(
-                                            dampingRatio = 0.72f,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    ),
-                                exit = fadeOut(tween(120)),
-                                modifier = Modifier.fillMaxWidth().animateItem(
-                                    fadeInSpec = tween(180),
+                            Row(
+                                Modifier.fillMaxWidth().animateItem(
+                                    fadeInSpec = tween(170, easing = FastOutSlowInEasing),
                                     placementSpec = spring(
                                         dampingRatio = Spring.DampingRatioNoBouncy,
                                         stiffness = Spring.StiffnessMediumLow
                                     ),
-                                    fadeOutSpec = tween(120)
+                                    fadeOutSpec = tween(110)
                                 ),
-                                label = "telegram-message-${message.id}"
+                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                             ) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                                ) {
                                 GlassPanel(
                                     modifier = Modifier.widthIn(max = 320.dp)
                                         .graphicsLayer { scaleX = messagePressScale; scaleY = messagePressScale }
@@ -1418,16 +1386,13 @@ private fun ConversationScreen(
                                             onLongClick = { selectedMessage = message }
                                         ),
                                     cornerRadius = 21,
-                                    highlighted = isUser,
-                                    animateShadow = true,
-                                    shadowElevation = if (isNewMessage) 1.dp else null
+                                    highlighted = isUser
                                 ) {
                                     Column(
                                         Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
                                         verticalArrangement = Arrangement.spacedBy(7.dp),
                                         content = messageContent
                                     )
-                                }
                                 }
                             }
                         }
@@ -2049,7 +2014,8 @@ private fun GlowSendButton(enabled: Boolean, loading: Boolean = false, onClick: 
                         Violet.copy(alpha = 0.88f),
                         Color(0xFF7654C8).copy(alpha = 0.90f)
                     )
-                ) else Brush.linearGradient(listOf(Color(0xFFAAA3B8), Color(0xFF827B91)))
+                ) else Brush.linearGradient(listOf(Color(0xFFAAA3B8), Color(0xFF827B91))),
+                CircleShape
             )
             .border(1.dp, Color.White.copy(alpha = if (enabled) 0.78f else 0.30f), CircleShape)
             .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
