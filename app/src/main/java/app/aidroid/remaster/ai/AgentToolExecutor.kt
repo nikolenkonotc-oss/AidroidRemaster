@@ -174,10 +174,10 @@ class AgentToolExecutor(
         val payload = buildJsonObject {
             put("model", "gpt-image-2.5-flare")
             put("prompt", prompt)
-            put("size", "1024x1024")
+            // Image gateway used by this provider supports automatic dimensions only.
+            put("size", "auto")
             put("quality", "medium")
             put("output_format", "png")
-            put("n", 1)
         }
         val response = postJson(openAiEndpoint(provider.baseUrl, "/images/generations"), payload, mapOf("Authorization" to "Bearer $apiKey"))
         val encoded = response["data"]?.jsonArray?.firstOrNull()
@@ -206,7 +206,7 @@ class AgentToolExecutor(
             .setType(MultipartBody.FORM)
             .addFormDataPart("model", "gpt-image-2.5-sunburst")
             .addFormDataPart("prompt", prompt)
-            .addFormDataPart("size", "1024x1024")
+            .addFormDataPart("size", "auto")
             .addFormDataPart("quality", "medium")
             .addFormDataPart("output_format", "png")
             .apply {
@@ -428,24 +428,35 @@ class AgentToolExecutor(
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val detail = runCatching {
+                val errorFields = runCatching {
                     val root = json.parseToJsonElement(body) as? JsonObject
                     val error = root?.get("error")
                     val errorObject = error as? JsonObject
-                    ((errorObject?.get("message") as? JsonPrimitive)?.contentOrNull)
+                    val message = ((errorObject?.get("message") as? JsonPrimitive)?.contentOrNull)
                         ?: ((errorObject?.get("detail") as? JsonPrimitive)?.contentOrNull)
                         ?: ((error as? JsonPrimitive)?.contentOrNull)
                         ?: ((root?.get("message") as? JsonPrimitive)?.contentOrNull)
                         ?: ((root?.get("detail") as? JsonPrimitive)?.contentOrNull)
+                    val code = ((errorObject?.get("code") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((root?.get("code") as? JsonPrimitive)?.contentOrNull)
+                    val parameter = ((errorObject?.get("param") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((root?.get("param") as? JsonPrimitive)?.contentOrNull)
+                    listOfNotNull(message, code?.let { "код: $it" }, parameter?.let { "параметр: $it" })
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
                 }.getOrNull()
                 val safeBody = body
                     .filter { !it.isISOControl() || it == '\n' || it == '\r' || it == '\t' }
                     .trim()
                     .take(700)
+                val requestId = response.header("x-request-id")
+                    ?: response.header("request-id")
+                val detail = errorFields?.takeIf { it.isNotBlank() }
+                    ?: safeBody.takeIf { it.isNotBlank() }
+                    ?: "сервер не передал описание ошибки"
                 throw IllegalStateException(
-                    detail?.takeIf { it.isNotBlank() }
-                        ?: safeBody.takeIf { it.isNotBlank() }
-                        ?: "Сервис инструмента вернул HTTP ${response.code} без описания ошибки."
+                    "Сервис инструмента вернул HTTP ${response.code}: $detail" +
+                        (requestId?.let { " · ID запроса: $it" } ?: "")
                 )
             }
             return runCatching { json.parseToJsonElement(body) }
