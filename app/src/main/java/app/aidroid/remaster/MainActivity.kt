@@ -20,6 +20,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -284,7 +286,7 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
                         .border(1.dp, Color.White.copy(alpha = 0.52f), RoundedCornerShape(15.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(23.dp))
+                    Image(painter = painterResource(R.drawable.ic_launcher_foreground), contentDescription = "Aidroid Remaster", modifier = Modifier.size(29.dp))
                 }
                 Spacer(Modifier.width(11.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -560,27 +562,68 @@ private fun ChatListScreen(
     var renameTarget by remember { mutableStateOf<ChatEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<ChatEntity?>(null) }
     val filtered = chats.filter { it.title.contains(query, ignoreCase = true) }
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         Row(
-            Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(if (archived) "Архив" else "Мои чаты", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("${filtered.size} диалогов", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    if (archived) "Архив" else "Мои чаты",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (archived) "${filtered.size} сохранённых диалогов" else "${filtered.size} диалогов",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            GlowButton("Новый чат", onCreate)
+
+            val addShape = CircleShape
+            Box(
+                Modifier.size(54.dp)
+                    .shadow(12.dp, addShape, clip = false)
+                    .clip(addShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFFB99AFF), Color(0xFF8061E8), Color(0xFF4E9ED0))
+                        )
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.48f), addShape)
+                    .clickable(onClick = onCreate),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "Создать чат",
+                    tint = Color.White,
+                    modifier = Modifier.size(29.dp)
+                )
+            }
         }
-        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 20) {
+
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 21) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp),
                 placeholder = { Text("Поиск по чатам") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Очистить поиск")
+                        }
+                    }
+                },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(17.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = MaterialTheme.colorScheme.onSurface,
                     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -592,28 +635,112 @@ private fun ChatListScreen(
                 )
             )
         }
-        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { onToggleArchived(!archived); query = "" }) {
-                Icon(if (archived) Icons.Filled.Chat else Icons.Filled.Archive, null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (archived) "Активные" else "Архив")
+
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            listOf(false to "Все чаты", true to "Архив").forEach { (isArchive, label) ->
+                val selected = archived == isArchive
+                Row(
+                    Modifier.weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            if (selected) Brush.linearGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.34f),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.20f)
+                                )
+                            ) else Brush.linearGradient(
+                                listOf(Color.Transparent, Color.Transparent)
+                            )
+                        )
+                        .border(
+                            if (selected) 1.dp else 0.dp,
+                            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.30f) else Color.Transparent,
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable {
+                            if (archived != isArchive) {
+                                onToggleArchived(isArchive)
+                                query = ""
+                            }
+                        }
+                        .padding(vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        if (isArchive) Icons.Filled.Archive else Icons.Filled.Forum,
+                        contentDescription = null,
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        label,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
             }
         }
+
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 25) {
+                GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 28, highlighted = true) {
                     Column(
-                        Modifier.fillMaxWidth().padding(24.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                        verticalArrangement = Arrangement.spacedBy(11.dp)
                     ) {
-                        Icon(Icons.Filled.Forum, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
-                        Text(if (query.isBlank()) "Здесь пока пусто" else "Ничего не найдено", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Box(
+                            Modifier.size(76.dp)
+                                .shadow(18.dp, CircleShape, clip = false)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.36f),
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (query.isBlank()) Icons.Filled.AutoAwesome else Icons.Filled.SearchOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
                         Text(
-                            if (query.isBlank()) "Создай первый диалог — он сохранится на устройстве." else "Попробуй изменить запрос.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall
+                            if (query.isBlank()) "Твоё пространство диалогов" else "Ничего не найдено",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge
                         )
+                        Text(
+                            if (query.isBlank()) {
+                                "Создай новый чат — история и контекст будут храниться на устройстве."
+                            } else {
+                                "Попробуй изменить поисковый запрос."
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (query.isBlank() && !archived) {
+                            Spacer(Modifier.height(2.dp))
+                            GlowButton("Создать первый чат", onCreate)
+                        }
                     }
                 }
             }
@@ -621,7 +748,7 @@ private fun ChatListScreen(
             LazyColumn(
                 Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp)
+                contentPadding = PaddingValues(top = 1.dp, bottom = 18.dp)
             ) {
                 items(filtered, key = { it.id }) { chat ->
                     ChatListItem(
@@ -636,6 +763,7 @@ private fun ChatListScreen(
             }
         }
     }
+
     renameTarget?.let { chat ->
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
@@ -656,6 +784,7 @@ private fun ChatListScreen(
         )
     }
 }
+
 @Composable
 private fun ChatListItem(
     chat: ChatEntity,
