@@ -37,6 +37,9 @@ interface ChatDao {
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY createdAt ASC, id ASC")
     suspend fun getMessagesForSync(chatId: Long): List<MessageEntity>
 
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND deletedAt IS NULL ORDER BY createdAt ASC, id ASC")
+    suspend fun getMessagesForInference(chatId: Long): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE syncId = :syncId LIMIT 1")
     suspend fun getMessageBySyncId(syncId: String): MessageEntity?
 
