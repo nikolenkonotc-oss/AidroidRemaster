@@ -1,4 +1,4 @@
-package app.aidroid.remaster
+﻿package app.aidroid.remaster
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,7 +15,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -66,7 +66,7 @@ private val VioletBright = Color(0xFFB69AFF)
 private val Cyan = Color(0xFF77DCEB)
 
 private enum class Screen(val label: String) {
-    HOME("Главная"), CHAT("Чаты"), AGENT("Агент"), MODELS("Модели"), SETTINGS("Настройки")
+    HOME("Р“Р»Р°РІРЅР°СЏ"), CHAT("Р§Р°С‚С‹"), AGENT("РђРіРµРЅС‚"), MODELS("РњРѕРґРµР»Рё"), SETTINGS("РќР°СЃС‚СЂРѕР№РєРё")
 }
 
 class MainActivity : ComponentActivity() {
@@ -158,11 +158,11 @@ private fun AidroidApp(repository: ChatRepository) {
                                 onBackToChats = { selectedChatId = null }
                             )
                             Screen.AGENT -> PlaceholderScreen(
-                                "Agent Workspace", "Среда выполнения агента и инструменты появятся здесь.",
+                                "Agent Workspace", "РЎСЂРµРґР° РІС‹РїРѕР»РЅРµРЅРёСЏ Р°РіРµРЅС‚Р° Рё РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РїРѕСЏРІСЏС‚СЃСЏ Р·РґРµСЃСЊ.",
                                 Icons.Filled.SmartToy
                             )
                             Screen.MODELS -> PlaceholderScreen(
-                                "Модели и провайдеры", "Локальные модели, облачные API и Hybrid Model Router.",
+                                "РњРѕРґРµР»Рё Рё РїСЂРѕРІР°Р№РґРµСЂС‹", "Р›РѕРєР°Р»СЊРЅС‹Рµ РјРѕРґРµР»Рё, РѕР±Р»Р°С‡РЅС‹Рµ API Рё Hybrid Model Router.",
                                 Icons.Filled.Storage
                             )
                             Screen.SETTINGS -> SettingsScreen(darkTheme) { darkTheme = it }
@@ -221,8 +221,8 @@ private fun AidroidTopBar(onSettings: () -> Unit, onNewChat: () -> Unit) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onNewChat) { Icon(Icons.Filled.AddComment, "Новый чат", tint = MaterialTheme.colorScheme.onBackground) }
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки", tint = MaterialTheme.colorScheme.onBackground) }
+            IconButton(onClick = onNewChat) { Icon(Icons.Filled.AddComment, "РќРѕРІС‹Р№ С‡Р°С‚", tint = MaterialTheme.colorScheme.onBackground) }
+            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "РќР°СЃС‚СЂРѕР№РєРё", tint = MaterialTheme.colorScheme.onBackground) }
         }
     }
 }
@@ -236,9 +236,9 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("ТВОЁ AI-ПРОСТРАНСТВО", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.sp)
-                Text("Твой AI.\nТвои правила.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, lineHeight = 42.sp)
-                Text("Локальные модели, разные провайдеры и управляемые действия — в одном пространстве.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("РўР’РћРЃ AI-РџР РћРЎРўР РђРќРЎРўР’Рћ", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.sp)
+                Text("РўРІРѕР№ AI.\nРўРІРѕРё РїСЂР°РІРёР»Р°.", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, lineHeight = 42.sp)
+                Text("Р›РѕРєР°Р»СЊРЅС‹Рµ РјРѕРґРµР»Рё, СЂР°Р·РЅС‹Рµ РїСЂРѕРІР°Р№РґРµСЂС‹ Рё СѓРїСЂР°РІР»СЏРµРјС‹Рµ РґРµР№СЃС‚РІРёСЏ вЂ” РІ РѕРґРЅРѕРј РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІРµ.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
@@ -262,23 +262,23 @@ private fun HomeScreen(onOpenChats: () -> Unit, onOpenModels: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(8.dp).background(heroAccent, CircleShape))
                             Spacer(Modifier.width(8.dp))
-                            Text("СИСТЕМА ГОТОВА", color = heroAccent, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
+                            Text("РЎРРЎРўР•РњРђ Р“РћРўРћР’Рђ", color = heroAccent, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
                         }
-                        Text("Продолжим\\nразговор?", color = heroText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Твои диалоги теперь сохраняются локально.", color = heroMuted)
-                        GlowButton("Открыть чаты", onOpenChats)
+                        Text("РџСЂРѕРґРѕР»Р¶РёРј\\nСЂР°Р·РіРѕРІРѕСЂ?", color = heroText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text("РўРІРѕРё РґРёР°Р»РѕРіРё С‚РµРїРµСЂСЊ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ Р»РѕРєР°Р»СЊРЅРѕ.", color = heroMuted)
+                        GlowButton("РћС‚РєСЂС‹С‚СЊ С‡Р°С‚С‹", onOpenChats)
                     }
                 }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickCard(Modifier.weight(1f), Icons.Filled.Chat, "Мои чаты", "История и отдельные контексты", onOpenChats)
-                QuickCard(Modifier.weight(1f), Icons.Filled.Storage, "Модели", "Провайдеры и локальный AI", onOpenModels)
+                QuickCard(Modifier.weight(1f), Icons.Filled.Chat, "РњРѕРё С‡Р°С‚С‹", "РСЃС‚РѕСЂРёСЏ Рё РѕС‚РґРµР»СЊРЅС‹Рµ РєРѕРЅС‚РµРєСЃС‚С‹", onOpenChats)
+                QuickCard(Modifier.weight(1f), Icons.Filled.Storage, "РњРѕРґРµР»Рё", "РџСЂРѕРІР°Р№РґРµСЂС‹ Рё Р»РѕРєР°Р»СЊРЅС‹Р№ AI", onOpenModels)
             }
         }
         item {
-            InfoCard(Icons.Filled.Security, "Приватность прежде всего", "История диалогов хранится на устройстве. Передача данных AI-провайдерам пока не включена.")
+            InfoCard(Icons.Filled.Security, "РџСЂРёРІР°С‚РЅРѕСЃС‚СЊ РїСЂРµР¶РґРµ РІСЃРµРіРѕ", "РСЃС‚РѕСЂРёСЏ РґРёР°Р»РѕРіРѕРІ С…СЂР°РЅРёС‚СЃСЏ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ. РџРµСЂРµРґР°С‡Р° РґР°РЅРЅС‹С… AI-РїСЂРѕРІР°Р№РґРµСЂР°Рј РїРѕРєР° РЅРµ РІРєР»СЋС‡РµРЅР°.")
         }
     }
 }
@@ -450,16 +450,16 @@ private fun ChatListScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text(if (archived) "Архив" else "Мои чаты", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("${filtered.size} диалогов", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(if (archived) "РђСЂС…РёРІ" else "РњРѕРё С‡Р°С‚С‹", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("${filtered.size} РґРёР°Р»РѕРіРѕРІ", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            GlowButton("Новый чат", onCreate)
+            GlowButton("РќРѕРІС‹Р№ С‡Р°С‚", onCreate)
         }
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(
             value = query, onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Поиск по чатам") },
+            placeholder = { Text("РџРѕРёСЃРє РїРѕ С‡Р°С‚Р°Рј") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
             singleLine = true,
             shape = RoundedCornerShape(18.dp)
@@ -468,15 +468,15 @@ private fun ChatListScreen(
             TextButton(onClick = { onToggleArchived(!archived); query = "" }) {
                 Icon(if (archived) Icons.Filled.Chat else Icons.Filled.Archive, null)
                 Spacer(Modifier.width(6.dp))
-                Text(if (archived) "Активные" else "Архив")
+                Text(if (archived) "РђРєС‚РёРІРЅС‹Рµ" else "РђСЂС…РёРІ")
             }
         }
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.Forum, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
-                    Text(if (query.isBlank()) "Здесь пока пусто" else "Ничего не найдено", fontWeight = FontWeight.SemiBold)
-                    Text(if (query.isBlank()) "Создай первый диалог — он сохранится на устройстве." else "Попробуй изменить запрос.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (query.isBlank()) "Р—РґРµСЃСЊ РїРѕРєР° РїСѓСЃС‚Рѕ" else "РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ", fontWeight = FontWeight.SemiBold)
+                    Text(if (query.isBlank()) "РЎРѕР·РґР°Р№ РїРµСЂРІС‹Р№ РґРёР°Р»РѕРі вЂ” РѕРЅ СЃРѕС…СЂР°РЅРёС‚СЃСЏ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ." else "РџРѕРїСЂРѕР±СѓР№ РёР·РјРµРЅРёС‚СЊ Р·Р°РїСЂРѕСЃ.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -492,19 +492,19 @@ private fun ChatListScreen(
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Переименовать чат") },
-            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Название") }) },
-            confirmButton = { TextButton(onClick = { onRename(chat, title); renameTarget = null }) { Text("Сохранить") } },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Отмена") } }
+            title = { Text("РџРµСЂРµРёРјРµРЅРѕРІР°С‚СЊ С‡Р°С‚") },
+            text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true, label = { Text("РќР°Р·РІР°РЅРёРµ") }) },
+            confirmButton = { TextButton(onClick = { onRename(chat, title); renameTarget = null }) { Text("РЎРѕС…СЂР°РЅРёС‚СЊ") } },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("РћС‚РјРµРЅР°") } }
         )
     }
     deleteTarget?.let { chat ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Удалить диалог?") },
-            text = { Text("«${chat.title}» и все его сообщения будут удалены без возможности восстановления.") },
-            confirmButton = { TextButton(onClick = { onDelete(chat); deleteTarget = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Удалить") } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Отмена") } }
+            title = { Text("РЈРґР°Р»РёС‚СЊ РґРёР°Р»РѕРі?") },
+            text = { Text("В«${chat.title}В» Рё РІСЃРµ РµРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ Р±РµР· РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.") },
+            confirmButton = { TextButton(onClick = { onDelete(chat); deleteTarget = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("РЈРґР°Р»РёС‚СЊ") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("РћС‚РјРµРЅР°") } }
         )
     }
 }
@@ -537,16 +537,16 @@ private fun ChatListItem(
                         Icon(Icons.Filled.PushPin, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(14.dp))
                     }
                 }
-                Text(if (chat.isArchived) "В архиве" else "Локальный диалог · ${android.text.format.DateFormat.format("dd.MM · HH:mm", chat.updatedAt)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(if (chat.isArchived) "Р’ Р°СЂС…РёРІРµ" else "Р›РѕРєР°Р»СЊРЅС‹Р№ РґРёР°Р»РѕРі В· ${android.text.format.DateFormat.format("dd.MM В· HH:mm", chat.updatedAt)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню чата") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "РњРµРЅСЋ С‡Р°С‚Р°") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Переименовать") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text(if (chat.isPinned) "Открепить" else "Закрепить") }, leadingIcon = { Icon(Icons.Filled.PushPin, null) }, onClick = { menu = false; onPin() })
-                    DropdownMenuItem(text = { Text(if (chat.isArchived) "Вернуть из архива" else "Архивировать") }, leadingIcon = { Icon(Icons.Filled.Archive, null) }, onClick = { menu = false; onArchive() })
+                    DropdownMenuItem(text = { Text("РџРµСЂРµРёРјРµРЅРѕРІР°С‚СЊ") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
+                    DropdownMenuItem(text = { Text(if (chat.isPinned) "РћС‚РєСЂРµРїРёС‚СЊ" else "Р—Р°РєСЂРµРїРёС‚СЊ") }, leadingIcon = { Icon(Icons.Filled.PushPin, null) }, onClick = { menu = false; onPin() })
+                    DropdownMenuItem(text = { Text(if (chat.isArchived) "Р’РµСЂРЅСѓС‚СЊ РёР· Р°СЂС…РёРІР°" else "РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ") }, leadingIcon = { Icon(Icons.Filled.Archive, null) }, onClick = { menu = false; onArchive() })
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Удалить", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(text = { Text("РЈРґР°Р»РёС‚СЊ", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
                 }
             }
         }
@@ -564,12 +564,12 @@ private fun ConversationScreen(
     var showRename by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "К списку чатов") }
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Рљ СЃРїРёСЃРєСѓ С‡Р°С‚РѕРІ") }
             Column(Modifier.weight(1f)) {
                 Text(chat.title, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text("Отдельная история · хранится локально", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                Text("РћС‚РґРµР»СЊРЅР°СЏ РёСЃС‚РѕСЂРёСЏ В· С…СЂР°РЅРёС‚СЃСЏ Р»РѕРєР°Р»СЊРЅРѕ", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
-            IconButton(onClick = { showRename = true }) { Icon(Icons.Filled.Edit, "Переименовать") }
+            IconButton(onClick = { showRename = true }) { Icon(Icons.Filled.Edit, "РџРµСЂРµРёРјРµРЅРѕРІР°С‚СЊ") }
         }
         AnimatedVisibility(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -580,8 +580,8 @@ private fun ConversationScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp))
-                    Text("С чего начнём?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text("Сообщения этого чата не смешиваются с другими.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("РЎ С‡РµРіРѕ РЅР°С‡РЅС‘Рј?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("РЎРѕРѕР±С‰РµРЅРёСЏ СЌС‚РѕРіРѕ С‡Р°С‚Р° РЅРµ СЃРјРµС€РёРІР°СЋС‚СЃСЏ СЃ РґСЂСѓРіРёРјРё.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -606,7 +606,7 @@ private fun ConversationScreen(
             OutlinedTextField(
                 value = localText, onValueChange = { localText = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Сообщение...") },
+                placeholder = { Text("РЎРѕРѕР±С‰РµРЅРёРµ...") },
                 shape = RoundedCornerShape(22.dp), maxLines = 4,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { if (localText.isNotBlank()) { onSend(localText); localText = "" } })
@@ -620,10 +620,10 @@ private fun ConversationScreen(
         var title by remember(chat.id) { mutableStateOf(chat.title) }
         AlertDialog(
             onDismissRequest = { showRename = false },
-            title = { Text("Название чата") },
+            title = { Text("РќР°Р·РІР°РЅРёРµ С‡Р°С‚Р°") },
             text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { onRename(title); showRename = false }) { Text("Сохранить") } },
-            dismissButton = { TextButton(onClick = { showRename = false }) { Text("Отмена") } }
+            confirmButton = { TextButton(onClick = { onRename(title); showRename = false }) { Text("РЎРѕС…СЂР°РЅРёС‚СЊ") } },
+            dismissButton = { TextButton(onClick = { showRename = false }) { Text("РћС‚РјРµРЅР°") } }
         )
     }
 }
@@ -649,18 +649,18 @@ private fun PlaceholderScreen(title: String, description: String, icon: androidx
 @Composable
 private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit) {
     Column(Modifier.fillMaxSize().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Настройки", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("РќР°СЃС‚СЂРѕР№РєРё", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), contentColor = MaterialTheme.colorScheme.onSurface)) {
             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text("Тёмная тема", fontWeight = FontWeight.SemiBold)
-                    Text("Переключение между Aurora Dark и Aurora Light", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text("РўС‘РјРЅР°СЏ С‚РµРјР°", fontWeight = FontWeight.SemiBold)
+                    Text("РџРµСЂРµРєР»СЋС‡РµРЅРёРµ РјРµР¶РґСѓ Aurora Dark Рё Aurora Light", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = darkTheme, onCheckedChange = onThemeChange)
             }
         }
-        InfoCard(Icons.Filled.Security, "Локальное хранение", "История чатов хранится в базе Room на устройстве. Внешняя передача пока не выполняется.")
-        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.3")
+        InfoCard(Icons.Filled.Security, "Р›РѕРєР°Р»СЊРЅРѕРµ С…СЂР°РЅРµРЅРёРµ", "РСЃС‚РѕСЂРёСЏ С‡Р°С‚РѕРІ С…СЂР°РЅРёС‚СЃСЏ РІ Р±Р°Р·Рµ Room РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ. Р’РЅРµС€РЅСЏСЏ РїРµСЂРµРґР°С‡Р° РїРѕРєР° РЅРµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ.")
+        InfoCard(Icons.Filled.Info, "Рћ РїСЂРёР»РѕР¶РµРЅРёРё", "Aidroid Remaster В· 0.2.0-alpha.3")
     }
 }
 
@@ -676,3 +676,4 @@ private fun InfoCard(icon: androidx.compose.ui.graphics.vector.ImageVector, titl
         }
     }
 }
+
