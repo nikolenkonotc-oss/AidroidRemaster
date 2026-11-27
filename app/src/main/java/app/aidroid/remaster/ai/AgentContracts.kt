@@ -51,7 +51,9 @@ data class AgentPreferences(
     val systemPrompt: String = "",
     val codeRunnerUrl: String = "",
     // Null means choose the active image-capable provider, then direct OpenAI.
-    val imageProviderId: String? = null
+    val imageProviderId: String? = null,
+    val imageGenerationModel: String = "gpt-image-2.6-flare",
+    val imageEditModel: String = "gpt-image-2.6-sunburst"
 )
 
 data class LlmImageAttachment(
