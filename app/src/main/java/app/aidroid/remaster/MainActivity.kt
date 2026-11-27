@@ -62,9 +62,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.produceState
@@ -1155,6 +1158,7 @@ private fun ConversationScreen(
     val attachmentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val messageActionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
+    var textSelectionMessage by remember(chat.id) { mutableStateOf<MessageEntity?>(null) }
     var localText by rememberSaveable(chat.id) { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
     var attachmentError by remember { mutableStateOf<String?>(null) }
@@ -1557,7 +1561,8 @@ private fun ConversationScreen(
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth()
+                        .animateContentSize(tween(220, easing = FastOutSlowInEasing)),
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -1572,9 +1577,7 @@ private fun ConversationScreen(
                     OutlinedTextField(
                         value = localText,
                         onValueChange = { localText = it },
-                        modifier = Modifier.weight(1f).animateContentSize(
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ),
+                        modifier = Modifier.weight(1f),
                         placeholder = { Text("Сообщение...") },
                         shape = RoundedCornerShape(19.dp),
                         maxLines = 4,
@@ -1662,6 +1665,17 @@ private fun ConversationScreen(
                 )
                 if (messageForActions.content.isNotBlank()) {
                     MessageActionOption(
+                        icon = Icons.Filled.TextFields,
+                        title = "Выделить текст",
+                        description = "Открыть текст целиком и выбрать нужный фрагмент"
+                    ) {
+                        scope.launch {
+                            messageActionSheetState.hide()
+                            selectedMessage = null
+                            textSelectionMessage = messageForActions
+                        }
+                    }
+                    MessageActionOption(
                         icon = Icons.Filled.ContentCopy,
                         title = "Копировать текст",
                         description = "Скопировать содержимое сообщения"
@@ -1692,6 +1706,95 @@ private fun ConversationScreen(
                             throw cancelled
                         } catch (error: Exception) {
                             attachmentError = "Не удалось удалить сообщение: ${error.message ?: "ошибка хранилища"}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    textSelectionMessage?.let { messageForTextSelection ->
+        Dialog(
+            onDismissRequest = { textSelectionMessage = null },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(tween(180)) +
+                    slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it / 12 } +
+                    scaleIn(initialScale = 0.975f, animationSpec = tween(220, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.985f, animationSpec = tween(140)),
+                label = "message-text-selection-screen"
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    Column(
+                        Modifier.fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            PressAnimatedIconButton(
+                                onClick = { textSelectionMessage = null },
+                                icon = Icons.Filled.ArrowBack,
+                                contentDescription = "Назад",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Выделение текста",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Зажми текст и выбери нужный фрагмент",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            PressAnimatedIconButton(
+                                onClick = {
+                                    clipboard.setPrimaryClip(
+                                        ClipData.newPlainText("Aidroid message", messageForTextSelection.content)
+                                    )
+                                    showNotice("Текст скопирован")
+                                    textSelectionMessage = null
+                                },
+                                icon = Icons.Filled.ContentCopy,
+                                contentDescription = "Копировать весь текст",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        GlassPanel(
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 25
+                        ) {
+                            Column(
+                                Modifier.fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(20.dp)
+                            ) {
+                                SelectionContainer {
+                                    Text(
+                                        messageForTextSelection.content,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                            }
                         }
                     }
                 }
