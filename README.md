@@ -4,13 +4,13 @@ Personal-first Android AI agent. Local-first, provider-agnostic, user-controlled
 
 ## Project status
 
-**Aurora UI, local chat persistence, attachments, Google accounts and Firebase sync / milestone 0.2.0-alpha.10**
+**Aurora UI complete · Provider and agent integration in progress**
 
 The account area supports a local profile and an explicit Google account chooser through Android Credential Manager. When a Firebase project is configured, Firebase Authentication verifies the Google identity and Cloud Firestore synchronizes profile fields and text chat history across devices. Custom profile avatars use Firebase Storage. See `docs/GOOGLE_AUTH_SETUP.md` for one-time project setup.
 
 Local mode remains available without registration. Room is still used for immediate local access. Chat and message deletion markers are synchronized to prevent deleted conversations from reappearing on another device. Binary chat attachments remain local to the device in this iteration.
 
-The app includes a Compose navigation shell, Aurora light/dark themes, animated transitions, Room-backed multi-chat history, local photo/file/camera attachments, an adaptive launcher icon, and animated message actions. Provider adapters, AI responses, agent tools, long-term memory, and local inference are not implemented yet.
+The app includes a Compose navigation shell, Aurora light/dark themes, animated transitions, Room-backed multi-chat history, local photo/file/camera attachments, Google sign-in and Firebase sync. The agent integration branch adds OpenAI Responses, OpenAI-compatible endpoints, Anthropic Messages, Gemini generateContent, Ollama model discovery, encrypted API credential storage, configurable reasoning modes, and a bounded tool-call runtime. See docs/PROVIDERS_AND_AGENTS.md for current coverage and limitations.
 
 ## Decisions
 
@@ -56,12 +56,12 @@ The debug build uses the `.debug` application ID suffix, so it can be installed 
 
 1. Repository foundation and CI.
 2. Design system and navigation shell.
-3. Provider contracts and secure credential storage.
-4. Streaming chat and conversation persistence.
-5. Model router and capability profiles.
-6. Agent runtime, tools, approvals, and activity log.
-7. Memory layers with user review and control.
-8. llama.cpp local inference integration.
+3. Provider contracts and encrypted credential storage — implemented on the agent branch.
+4. Provider-backed chat and persisted conversation history — first iteration implemented; streaming is still pending.
+5. Model capability profiles and hybrid router — planned.
+6. Agent runtime and safe built-in tools — initial iteration implemented; tool approvals and external connectors are pending.
+7. Memory layers with user review and control — planned.
+8. On-device llama.cpp / GGUF inference — planned; current local support connects to a local Ollama or llama.cpp HTTP server.
 
 ## License
 
