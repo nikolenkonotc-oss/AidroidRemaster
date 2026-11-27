@@ -31,7 +31,7 @@ class AgentRunner(
                     "Подключи ИИ-провайдера в разделе «Модели», выбери модель и назначь её активной."
                 )
             val apiKey = providers.apiKey(config.id)
-            if (config.type != ProviderType.OLLAMA && apiKey.isNullOrBlank()) {
+            if (config.type in setOf(ProviderType.OPENAI, ProviderType.ANTHROPIC, ProviderType.GEMINI) && apiKey.isNullOrBlank()) {
                 return saveResult(chatId, false, "Для подключения «${config.name}» нужен API-ключ. Добавь его в настройках провайдера.")
             }
 
