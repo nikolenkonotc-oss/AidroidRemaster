@@ -12,15 +12,18 @@ import kotlinx.serialization.json.buildJsonObject
  * The model can use an empty string for an optional text value.
  */
 internal object ToolSchemaNormalizer {
-    fun forStrictFunction(parameters: JsonObject): JsonObject = normalizeObject(parameters)
+    fun forStrictFunction(parameters: JsonObject): JsonObject = normalizeObject(parameters, includeAdditionalProperties = true)
 
-    private fun normalizeElement(element: JsonElement): JsonElement = when (element) {
-        is JsonObject -> normalizeObject(element)
-        is JsonArray -> JsonArray(element.map(::normalizeElement))
+    fun forFunctionDeclaration(parameters: JsonObject): JsonObject =
+        normalizeObject(parameters, includeAdditionalProperties = false)
+
+    private fun normalizeElement(element: JsonElement, includeAdditionalProperties: Boolean): JsonElement = when (element) {
+        is JsonObject -> normalizeObject(element, includeAdditionalProperties)
+        is JsonArray -> JsonArray(element.map { normalizeElement(it, includeAdditionalProperties) })
         else -> element
     }
 
-    private fun normalizeObject(schema: JsonObject): JsonObject {
+    private fun normalizeObject(schema: JsonObject, includeAdditionalProperties: Boolean): JsonObject {
         val properties = schema["properties"] as? JsonObject
         return buildJsonObject {
             schema.forEach { (key, value) ->
@@ -28,7 +31,7 @@ internal object ToolSchemaNormalizer {
                     "properties" -> {
                         put("properties", buildJsonObject {
                             properties?.forEach { (name, propertySchema) ->
-                                put(name, normalizeElement(propertySchema))
+                                put(name, normalizeElement(propertySchema, includeAdditionalProperties))
                             }
                         })
                     }
@@ -39,15 +42,15 @@ internal object ToolSchemaNormalizer {
                             put(key, value)
                         }
                     }
-                    "additionalProperties" -> put(key, JsonPrimitive(false))
-                    else -> put(key, normalizeElement(value))
+                    "additionalProperties" -> if (includeAdditionalProperties) put(key, JsonPrimitive(false))
+                    else -> put(key, normalizeElement(value, includeAdditionalProperties))
                 }
             }
             if (properties != null) {
                 if ("required" !in schema) {
                     put("required", JsonArray(properties.keys.map(::JsonPrimitive)))
                 }
-                if ("additionalProperties" !in schema) {
+                if (includeAdditionalProperties && "additionalProperties" !in schema) {
                     put("additionalProperties", JsonPrimitive(false))
                 }
             }

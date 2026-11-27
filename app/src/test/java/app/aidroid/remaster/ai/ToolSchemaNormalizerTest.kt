@@ -39,6 +39,28 @@ class ToolSchemaNormalizerTest {
     }
 
     @Test
+    fun geminiFunctionDeclarationOmitsAdditionalPropertiesButRequiresAllProperties() {
+        val schema = buildJsonObject {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("query") { put("type", "string") }
+                putJsonObject("freshness") { put("type", "string") }
+            }
+            putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("query")) }
+            put("additionalProperties", false)
+        }
+
+        val normalized = ToolSchemaNormalizer.forFunctionDeclaration(schema)
+
+        assertEquals(
+            setOf("query", "freshness"),
+            normalized["required"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
+        )
+        assertFalse("additionalProperties" in normalized)
+        assertFalse("additionalProperties" in normalized["properties"]!!.jsonObject["query"]!!.jsonObject)
+    }
+
+    @Test
     fun normalizesNestedObjectsAndForcesAdditionalPropertiesOff() {
         val schema = buildJsonObject {
             put("type", "object")

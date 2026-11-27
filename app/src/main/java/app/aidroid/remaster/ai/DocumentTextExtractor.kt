@@ -161,6 +161,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
         var cellReference: String? = null
         var cellType: String? = null
         var cellText = StringBuilder()
+        var readingCellValue = false
         var rowCells = mutableListOf<String>()
         var event = parser.eventType
 
@@ -176,11 +177,13 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
                         cellType = parser.getAttributeValue(null, "t")
                         cellText = StringBuilder()
                     }
+                    "v", "t" -> if (cellReference != null) readingCellValue = true
                 }
-                XmlPullParser.TEXT -> if (cellReference != null) {
+                XmlPullParser.TEXT -> if (cellReference != null && readingCellValue) {
                     parser.text?.let(cellText::append)
                 }
                 XmlPullParser.END_TAG -> when (localName(parser.name)) {
+                    "v", "t" -> readingCellValue = false
                     "c" -> {
                         val raw = cellText.toString().trim()
                         val value = when (cellType) {
@@ -194,6 +197,7 @@ class DocumentTextExtractor(context: Context, private val storage: AttachmentSto
                         }
                         cellReference = null
                         cellType = null
+                        readingCellValue = false
                     }
                     "row" -> if (rowCells.isNotEmpty()) {
                         val prefix = rowNumber.takeIf { it.isNotBlank() }?.let { "Строка $it: " }.orEmpty()

@@ -526,7 +526,7 @@ class ProviderHttpClient {
                     add(buildJsonObject {
                         put("name", tool.name)
                         put("description", tool.description)
-                        put("parameters", ToolSchemaNormalizer.forStrictFunction(tool.parameters))
+                        put("parameters", ToolSchemaNormalizer.forFunctionDeclaration(tool.parameters))
                     })
                 }
             }

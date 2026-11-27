@@ -46,13 +46,6 @@ The reasoning toggle is intentionally opt-in because reasoning parameters differ
 
 ## Agent tools
 
-The first runtime provides a safe calculator and current device date/time. The model may request these tools, but the app validates every requested name against the enabled registry and executes only registered functions. The runtime has a five-round tool-call limit per response. No shell command, arbitrary code, or remote action is executed.
-
-MCP servers, app integrations, and a persistent tool execution audit log are not enabled in this iteration. They must be added as explicit connectors with permission scopes and confirmation for consequential actions.
-
-
-## Agent tools
-
 The Agent workspace includes optional tools. Each connector is opt-in:
 
 - Web search works without API keys or registration through DuckDuckGo and Mojeek public HTML search pages. The agent can call `web_search` for links/snippets and `web_open` to visit a public HTTP/HTTPS page and extract its title, description and readable text. An optional Brave Search key is used only as a fallback if both anonymous sources fail; it is encrypted with Android Keystore.
@@ -60,7 +53,7 @@ The Agent workspace includes optional tools. Each connector is opt-in:
 - File analysis reads only files the user attached through Android's document picker. Text, Markdown, CSV, JSON, XML, HTML, PDF, DOCX, XLSX and PPTX are supported in this iteration. PDF and Office text extraction runs locally before any extracted content is sent to the active model. Extracted content is bounded by size/page/context limits.
 - Image generation and editing use the OpenAI Image API through a separately configured OpenAI provider key. The active chat model can be from a different provider. Generated images are stored as normal chat attachments. Editing never overwrites the original.
 - Code execution requires a user-configured Piston server URL. Python and JavaScript are the only exposed languages. Each run shows the language and complete code in an approval dialog. The server request applies short run/compile timeouts and memory caps. Use a trusted, isolated Piston service; submitted code and standard input are sent to that server.
-- Email drafts and calendar events use Android intents only after a separate approval. Email is opened as a draft and is not sent by Aidroid. Calendar events open the system event form and are not saved until the user confirms inside the calendar app.
+- Email draft and calendar event integrations were removed from the current build.
 - Voice input requests the Android microphone permission only after the user taps the microphone button. On-device speech recognition is preferred when the device provides it; otherwise Android may use the configured recognition service. Voice output uses Android TextToSpeech.
 
 Tool calls are validated against the enabled registry. User approval expires after two minutes. Closing the confirmation dialog is equivalent to declining the action.
@@ -71,6 +64,8 @@ Tool calls are validated against the enabled registry. User approval expires aft
 - Image generation/editing is currently routed through an OpenAI API key even when another provider is selected for chat.
 - Office document extraction is text-based; it does not preserve complex layout, formulas, charts or slide visuals. Image-only/scanned PDFs need a separate OCR capability.
 - The Piston server is external to Aidroid. It must be controlled by the user or a trusted provider and configured with its own sandbox/container restrictions. Aidroid sends source code only after the in-app approval.
-- Email/calendar connectors open system apps; there is no background mail sending, direct calendar database access or silent event creation.
+- Email and calendar integrations are intentionally not included in this build.
 - Search providers are public web interfaces rather than stable APIs. They may change their HTML, throttle requests or show bot checks; the app falls back between sources and reports when none work. Page reading accepts public HTTP/HTTPS HTML or text only, limits response sizes and redirects, rejects local/private IP targets, and does not execute page scripts or download documents. PDF and Office URLs are not parsed by the web reader in this iteration.
+- Attached files and generated images are stored locally. Chat text can sync through Firestore, but binary attachment files are not uploaded to Firebase Storage in this iteration; they remain available on the device where they were attached.
+- Strict tool schemas are normalized per provider: Responses/Chat Completions and Anthropic use strict object schemas; Gemini uses a smaller Function Declaration schema without `additionalProperties`.
 - MCP client discovery, scoped plugin APIs and persistent tool execution audit history remain future work.
