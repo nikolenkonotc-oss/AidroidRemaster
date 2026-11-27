@@ -340,10 +340,7 @@ private object DnsOverHttpsResolver {
 
     private fun query(resolver: Resolver, hostname: String, type: Int): List<InetAddress> {
         val encodedHost = URLEncoder.encode(hostname, Charsets.UTF_8.name())
-        val url = when (resolver.hostname) {
-            "dns.google" -> "${resolver.endpoint}?name=$encodedHost&type=$type"
-            else -> "${resolver.endpoint}?name=$encodedHost&type=$type"
-        }
+        val url = "${resolver.endpoint}?name=$encodedHost&type=$type"
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/dns-json")
