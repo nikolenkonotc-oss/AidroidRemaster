@@ -97,23 +97,35 @@ class AgentToolExecutor(
 
         val freeAttempt = runCatching { webResearch.search(query, freshness) }
         val freeResults = freeAttempt.getOrNull().orEmpty()
-        val results = if (freeResults.isNotEmpty()) {
-            freeResults
-        } else {
-            val optionalKey = providers.toolCredential("brave_search")
-            if (optionalKey.isNullOrBlank()) {
-                throw IllegalStateException(
-                    freeAttempt.exceptionOrNull()?.message
-                        ?: "Бесплатные поисковые источники временно не вернули результатов."
-                )
-            }
-            searchBrave(query, freshness, optionalKey)
+        val optionalKey = providers.toolCredential("brave_search")
+        // A handful of scraped results is not enough for a broad/current query.
+        // Query the independent API when available and merge, rather than replacing,
+        // whatever the free engines managed to return.
+        val braveAttempt = if (freeResults.size < 5 && !optionalKey.isNullOrBlank()) {
+            runCatching { searchBrave(query, freshness, optionalKey) }
+        } else null
+        val braveResults = braveAttempt?.getOrNull().orEmpty()
+        val results = (freeResults + braveResults).distinctBy { it.url }.take(8)
+
+        if (results.isEmpty()) {
+            val freeError = freeAttempt.exceptionOrNull()?.message
+            val braveError = braveAttempt?.exceptionOrNull()?.message
+            throw IllegalStateException(
+                listOfNotNull(freeError, braveError).joinToString(" · ")
+                    .ifBlank { "Поисковые источники не вернули результатов. Попробуй изменить запрос." }
+            )
         }
 
+        val sourceNames = results.map { it.source }.filter { it.isNotBlank() }.distinct()
         val summary = buildString {
             append("Результаты веб-поиска по запросу: ").append(query).append("\n")
-            append("Источники: ").append(if (freeResults.isNotEmpty()) "бесплатный анонимный поиск" else "дополнительный Brave Search").append("\n\n")
-            results.take(8).forEachIndexed { index, item ->
+            append("Источники: ").append(sourceNames.ifEmpty { listOf("внешний поиск") }.joinToString(", ")).append("\n")
+            if (braveAttempt?.isFailure == true) {
+                append("Резервный Brave Search не сработал: ")
+                    .append(braveAttempt.exceptionOrNull()?.message?.take(350).orEmpty()).append("\n")
+            }
+            append("\n")
+            results.forEachIndexed { index, item ->
                 append(index + 1).append(". ").append(item.title).append("\n")
                 append(item.url).append("\n")
                 if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\n")
@@ -152,7 +164,7 @@ class AgentToolExecutor(
             val url = row["url"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val snippet = row["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) null
-            else WebSearchHit(title.take(300), url, snippet.take(900))
+            else WebSearchHit(title.take(300), url, snippet.take(900), "Brave Search")
         }.take(8)
     }
 
