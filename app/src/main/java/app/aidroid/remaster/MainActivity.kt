@@ -1246,14 +1246,13 @@ private fun ConversationScreen(
                         }
                     }
 
-                    if (loadedMessagesState.isEmpty()) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            modifier = Modifier.fillMaxSize(),
-                            visible = true,
-                            enter = fadeIn(tween(300)) +
-                                scaleIn(initialScale = 0.97f, animationSpec = tween(320, easing = FastOutSlowInEasing)),
-                            label = "new-chat-welcome"
-                        ) {
+                    androidx.compose.animation.Crossfade(
+                        targetState = loadedMessagesState.isEmpty(),
+                        modifier = Modifier.fillMaxSize(),
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        label = "new-chat-welcome"
+                    ) { showWelcome ->
+                        if (showWelcome) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 27) {
                                     Column(
@@ -1895,7 +1894,7 @@ private fun SettingsScreen(darkTheme: Boolean, onThemeChange: (Boolean) -> Unit)
             }
         }
         InfoCard(Icons.Filled.Security, "Локальное хранение", "История чатов хранится в базе Room на устройстве. Внешняя передача пока не выполняется.")
-        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.7 · Aurora Glass")
+        InfoCard(Icons.Filled.Info, "О приложении", "Aidroid Remaster · 0.2.0-alpha.9 · Aurora Glass")
     }
 }
 @Composable
