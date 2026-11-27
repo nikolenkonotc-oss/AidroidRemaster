@@ -28,6 +28,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -516,16 +517,21 @@ private fun GlowButton(text: String, onClick: () -> Unit) {
         Brush.linearGradient(listOf(Color(0xFFBFA8F4).copy(alpha = 0.88f), Color(0xFF9679DF).copy(alpha = 0.84f), Color(0xFF7656C6).copy(alpha = 0.90f)))
     }
     Box(
-        Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(glow, shape, clip = false)
-            .clip(shape)
+        Modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            this.shape = shape
+            clip = true
+            shadowElevation = glow.toPx()
+            ambientShadowColor = Color(0xFF8060C8)
+            spotShadowColor = Color(0xFF8060C8)
+        }
             .background(buttonBrush, shape)
             .border(1.dp, Color.White.copy(alpha = if (pressed || hovered) 0.82f else 0.45f), shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 14.dp)
     ) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.85f), Color.Transparent))))
         Text(text, color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
@@ -1168,11 +1174,14 @@ private fun ConversationScreen(
     var pendingCameraFile by remember(chat.id) { mutableStateOf<File?>(null) }
     val messageListState = rememberLazyListState()
     var hasPositionedInitialMessages by remember(chat.id) { mutableStateOf(false) }
+    var initialMessageIds by remember(chat.id) { mutableStateOf<Set<Long>>(emptySet()) }
+    var animatedMessageIds by remember(chat.id) { mutableStateOf<Set<Long>>(emptySet()) }
     var lastObservedMessageCount by remember(chat.id) { mutableIntStateOf(-1) }
     LaunchedEffect(chat.id, messages?.size) {
         val current = messages ?: return@LaunchedEffect
         if (!hasPositionedInitialMessages) {
             if (current.isNotEmpty()) messageListState.scrollToItem(current.lastIndex)
+            initialMessageIds = current.mapTo(mutableSetOf()) { it.id }
             hasPositionedInitialMessages = true
         } else if (current.size > lastObservedMessageCount && current.isNotEmpty()) {
             messageListState.animateScrollToItem(current.lastIndex)
@@ -1363,9 +1372,27 @@ private fun ConversationScreen(
                                 ),
                                 label = "message-press-scale-${message.id}"
                             )
+                            val shouldAnimateEntry = hasPositionedInitialMessages &&
+                                message.id !in initialMessageIds &&
+                                message.id !in animatedMessageIds
+                            val entryProgress = remember(message.id) {
+                                Animatable(if (shouldAnimateEntry) 0f else 1f)
+                            }
+                            LaunchedEffect(message.id) {
+                                if (shouldAnimateEntry) {
+                                    entryProgress.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = spring(
+                                            dampingRatio = 0.78f,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                    animatedMessageIds = animatedMessageIds + message.id
+                                }
+                            }
                             Row(
                                 Modifier.fillMaxWidth().animateItem(
-                                    fadeInSpec = tween(170, easing = FastOutSlowInEasing),
+                                    fadeInSpec = null,
                                     placementSpec = spring(
                                         dampingRatio = Spring.DampingRatioNoBouncy,
                                         stiffness = Spring.StiffnessMediumLow
@@ -1376,7 +1403,14 @@ private fun ConversationScreen(
                             ) {
                                 GlassPanel(
                                     modifier = Modifier.widthIn(max = 320.dp)
-                                        .graphicsLayer { scaleX = messagePressScale; scaleY = messagePressScale }
+                                        .graphicsLayer {
+                                            val progress = entryProgress.value
+                                            val entryScale = 0.93f + 0.07f * progress
+                                            alpha = progress
+                                            scaleX = messagePressScale * entryScale
+                                            scaleY = messagePressScale * entryScale
+                                            translationY = (1f - progress) * 14.dp.toPx()
+                                        }
                                         .clip(RoundedCornerShape(21.dp))
                                         .combinedClickable(
                                             interactionSource = messageInteraction,
