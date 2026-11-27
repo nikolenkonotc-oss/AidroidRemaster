@@ -313,33 +313,60 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var providers by remember { mutableStateOf(manager.providers()) }
     var preferences by remember { mutableStateOf(manager.agentPreferences()) }
     var providerMenu by remember { mutableStateOf(false) }
-    var savedNotice by remember { mutableStateOf(false) }
+    var savedNotice by remember { mutableStateOf<String?>(null) }
+    var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
+    var braveKeyVisible by remember { mutableStateOf(false) }
+    var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
+    var endpointError by remember { mutableStateOf<String?>(null) }
 
     fun update(next: AgentPreferences) {
         preferences = next
         manager.saveAgentPreferences(next)
-        savedNotice = true
+        savedNotice = "Настройки сохранены"
     }
 
-    val active = providers.firstOrNull { it.id == preferences.activeProviderId }
+    fun toggleTool(id: String, enabled: Boolean) {
+        val nextTools = preferences.enabledTools.toMutableSet().apply {
+            if (enabled) add(id) else remove(id)
+        }
+        update(preferences.copy(enabledTools = nextTools.toList()))
+    }
+
+    val active = providers.firstOrNull { it.id == preferences.activeProviderId && it.enabled }
+    val hasOpenAiKey = providers.any {
+        it.type == ProviderType.OPENAI && !manager.apiKey(it.id).isNullOrBlank()
+    }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Рабочее пространство агента", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Выбери модель, глубину размышления и инструменты, которыми агенту разрешено пользоваться.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Подключай инструменты, управляй доступом и выбирай, какие действия разрешены агенту.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("АКТИВНАЯ МОДЕЛЬ", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                Text(
+                    "АКТИВНАЯ МОДЕЛЬ",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
                 Box {
                     OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(active?.let { "${it.name} · ${it.model}" } ?: "Выбрать провайдера",
-                            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            active?.let { "${it.name} · ${it.model}" } ?: "Выбрать провайдера",
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                     DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
                         providers.filter { it.enabled }.forEach { item ->
@@ -357,7 +384,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     Text("Сначала добавь подключение в разделе «Модели».", color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("Запросы из чатов будут отправляться через эту модель.",
+                    Text("Все запросы из чатов будут отправляться через эту модель.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -365,61 +392,230 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                Text("РЕЖИМ РАЗМЫШЛЕНИЯ", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                Text(
+                    "РЕЖИМ РАЗМЫШЛЕНИЯ",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
                 ReasoningMode.entries.forEach { mode ->
                     FilterChip(
                         selected = preferences.reasoningMode == mode,
                         onClick = { update(preferences.copy(reasoningMode = mode)) },
-                        label = { Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(mode.label)
-                            Text(mode.description, style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } },
+                        label = {
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(mode.label)
+                                Text(mode.description, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 Text(
-                    if (active?.supportsReasoning == true) "Режим передаётся нативными параметрами выбранного провайдера."
-                    else "Эта модель не отмечена как поддерживающая нативный reasoning-параметр. Переключение режима само по себе не увеличит её возможности.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall
+                    if (active?.supportsReasoning == true) {
+                        "Нативный reasoning включён для этой модели."
+                    } else {
+                        "Нативный reasoning выключен для этой модели. Включай его в карточке провайдера только при подтверждённой поддержке."
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("ИНСТРУМЕНТЫ АГЕНТА", color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                Text(
+                    "ИНСТРУМЕНТЫ АГЕНТА",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
                 ToolPreferenceRow(
                     title = "Калькулятор",
-                    description = "Безопасное вычисление арифметических выражений",
+                    description = "Безопасное локальное вычисление арифметики",
                     checked = "calculator" in preferences.enabledTools,
-                    onChecked = { enabled ->
-                        update(preferences.copy(enabledTools = preferences.enabledTools.toMutableSet()
-                            .apply { if (enabled) add("calculator") else remove("calculator") }.toList()))
-                    }
+                    onChecked = { toggleTool("calculator", it) }
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
                     title = "Дата и время",
-                    description = "Точное локальное время и часовой пояс устройства",
+                    description = "Точное время и часовой пояс устройства",
                     checked = "current_datetime" in preferences.enabledTools,
-                    onChecked = { enabled ->
-                        update(preferences.copy(enabledTools = preferences.enabledTools.toMutableSet()
-                            .apply { if (enabled) add("current_datetime") else remove("current_datetime") }.toList()))
+                    onChecked = { toggleTool("current_datetime", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Поиск в интернете",
+                    description = "Свежие страницы и ссылки через Brave Search",
+                    checked = "web_search" in preferences.enabledTools,
+                    onChecked = { toggleTool("web_search", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Анализ изображений",
+                    description = "Передавать прикреплённые фото мультимодальной модели",
+                    checked = "image_analysis" in preferences.enabledTools,
+                    onChecked = { toggleTool("image_analysis", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Анализ файлов",
+                    description = "Локально читать PDF, DOCX, XLSX, PPTX, TXT, CSV и другие текстовые форматы",
+                    checked = "file_analysis" in preferences.enabledTools,
+                    onChecked = { toggleTool("file_analysis", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Генерация и редактирование изображений",
+                    description = "OpenAI Image API; для правки приложи исходное изображение",
+                    checked = "image_generation" in preferences.enabledTools,
+                    onChecked = { toggleTool("image_generation", it) }
+                )
+                if (!hasOpenAiKey) {
+                    Text(
+                        "Для генерации и редактирования нужен хотя бы один OpenAI-провайдер с сохранённым API-ключом. Модель чата при этом может быть другой.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Выполнение кода",
+                    description = "Python и JavaScript в отдельном Piston-сервере, с подтверждением перед запуском",
+                    checked = "code_execution" in preferences.enabledTools,
+                    onChecked = { toggleTool("code_execution", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Черновики электронной почты",
+                    description = "Открывать подготовленный черновик в выбранном почтовом приложении",
+                    checked = "email_draft" in preferences.enabledTools,
+                    onChecked = { toggleTool("email_draft", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "События календаря",
+                    description = "Открывать форму нового события в системном календаре",
+                    checked = "calendar_event" in preferences.enabledTools,
+                    onChecked = { toggleTool("calendar_event", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Голосовой ввод",
+                    description = "Кнопка микрофона в поле сообщения",
+                    checked = "voice_input" in preferences.enabledTools,
+                    onChecked = { toggleTool("voice_input", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Озвучивание ответов",
+                    description = "Чтение ответа голосом через синтез речи Android",
+                    checked = "voice_output" in preferences.enabledTools,
+                    onChecked = { toggleTool("voice_output", it) }
+                )
+                Text(
+                    "Каждый вызов проверяется приложением. Внешний поиск требует отдельный ключ, запуск кода и внешние действия требуют подтверждения.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
+            Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("ПОДКЛЮЧЕНИЕ ВЕБ-ПОИСКА", fontWeight = FontWeight.Bold)
+                Text(
+                    "Brave Search API. Ключ хранится зашифрованным в Android Keystore и не попадает в историю чатов.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = braveKey,
+                    onValueChange = { braveKey = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Brave Search API key") },
+                    singleLine = true,
+                    visualTransformation = if (braveKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { braveKeyVisible = !braveKeyVisible }) {
+                            Text(if (braveKeyVisible) "Скрыть" else "Показать")
+                        }
                     }
                 )
-                Text("Новые инструменты подключаются через реестр функций; каждое действие проверяется приложением, а не выполняется напрямую текстом модели.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Button(
+                        onClick = {
+                            manager.setToolCredential("brave_search", braveKey)
+                            savedNotice = if (braveKey.isBlank()) "Ключ поиска удалён" else "Ключ поиска сохранён"
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Сохранить ключ") }
+                    OutlinedButton(
+                        onClick = {
+                            braveKey = ""
+                            manager.setToolCredential("brave_search", "")
+                            savedNotice = "Ключ поиска удалён"
+                        }
+                    ) { Text("Удалить") }
+                }
+                Text(
+                    "Brave Search — внешний сервис; запросы поиска передаются ему. Ключ можно получить в кабинете Brave Search API.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
+            Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("СЕРВЕР ВЫПОЛНЕНИЯ КОДА", fontWeight = FontWeight.Bold)
+                Text(
+                    "Укажи адрес собственного Piston-сервера. Код будет передаваться только после подтверждения запуска. Для внешнего сервера используй HTTPS.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = codeRunnerUrl,
+                    onValueChange = { codeRunnerUrl = it; endpointError = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("URL Piston-сервера") },
+                    placeholder = { Text("https://server.example") },
+                    singleLine = true
+                )
+                Button(
+                    onClick = {
+                        runCatching { manager.saveCodeRunnerUrl(codeRunnerUrl) }
+                            .onSuccess {
+                                preferences = manager.agentPreferences()
+                                endpointError = null
+                                savedNotice = "Адрес сервера сохранён"
+                            }
+                            .onFailure { endpointError = it.message ?: "Проверь URL сервера." }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Сохранить адрес сервера") }
+                endpointError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                Text(
+                    "Если Piston установлен на компьютере в той же сети, можно указать его локальный адрес. Не указывай 127.0.0.1 для другого устройства.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("ИНСТРУКЦИИ АГЕНТА", fontWeight = FontWeight.Bold)
-                Text("Задай специализацию и стиль работы. Не помещай сюда пароли или API-ключи.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Задай специализацию и стиль работы. Не помещай сюда пароли или API-ключи.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
                 OutlinedTextField(
                     value = preferences.systemPrompt,
                     onValueChange = { update(preferences.copy(systemPrompt = it.take(4000))) },
@@ -430,8 +626,8 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                 )
             }
         }
-        AnimatedVisibility(savedNotice, enter = fadeIn(), exit = fadeOut()) {
-            Text("Настройки сохранены", color = MaterialTheme.colorScheme.secondary,
+        AnimatedVisibility(savedNotice != null, enter = fadeIn(), exit = fadeOut()) {
+            Text(savedNotice.orEmpty(), color = MaterialTheme.colorScheme.secondary,
                 style = MaterialTheme.typography.labelMedium)
         }
     }
