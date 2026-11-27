@@ -1070,6 +1070,7 @@ private fun ChatWorkspace(
                 ConversationLoadingState()
             } else {
                 ConversationScreen(
+                    agentRunner = agentRunner,
                     chat = destinationChat,
                     messages = if (destinationChatId == selectedChatId) messages else null,
                     onBack = onBackToChats,
@@ -1588,6 +1589,7 @@ private fun AuroraMenuItem(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationScreen(
+    agentRunner: AgentRunner,
     chat: ChatEntity,
     messages: List<MessageEntity>?,
     onBack: () -> Unit,
