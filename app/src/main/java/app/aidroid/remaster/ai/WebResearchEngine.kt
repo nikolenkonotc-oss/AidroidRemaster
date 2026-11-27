@@ -27,7 +27,8 @@ import java.util.concurrent.TimeUnit
 data class WebSearchHit(
     val title: String,
     val url: String,
-    val snippet: String
+    val snippet: String,
+    val source: String = ""
 )
 
 data class WebPageContent(
@@ -72,18 +73,35 @@ class WebResearchEngine {
         val errors = mutableListOf<String>()
 
         runCatching { searchDuckDuckGo(query, freshness) }
-            .onSuccess { hits -> hits.forEach { found.putIfAbsent(it.url, it) } }
+            .onSuccess { hits ->
+                hits.forEach { found.putIfAbsent(it.url, it) }
+                if (hits.isEmpty()) errors += "DuckDuckGo: страница не содержала распознанных результатов"
+            }
             .onFailure { errors += "DuckDuckGo: ${it.message}" }
 
         if (found.size < 5) {
             runCatching { searchMojeek(query) }
-                .onSuccess { hits -> hits.forEach { found.putIfAbsent(it.url, it) } }
+                .onSuccess { hits ->
+                    hits.forEach { found.putIfAbsent(it.url, it) }
+                    if (hits.isEmpty()) errors += "Mojeek: страница не содержала распознанных результатов"
+                }
                 .onFailure { errors += "Mojeek: ${it.message}" }
         }
 
+        // Google News RSS is an independent, keyless feed. It is intentionally a
+        // supplement for thin search results, not a replacement for general web search.
+        if (found.size < 5) {
+            runCatching { searchGoogleNews(query, freshness) }
+                .onSuccess { hits ->
+                    hits.forEach { found.putIfAbsent(it.url, it) }
+                    if (hits.isEmpty()) errors += "Google News RSS: лента не вернула подходящих материалов"
+                }
+                .onFailure { errors += "Google News RSS: ${it.message}" }
+        }
+
         if (found.isEmpty()) {
-            val detail = errors.take(2).joinToString("; ").ifBlank { "источники не вернули результатов" }
-            throw IOException("Бесплатные поисковые источники сейчас недоступны ($detail). Попробуй ещё раз позже.")
+            val detail = errors.take(3).joinToString("; ").ifBlank { "источники не вернули результатов" }
+            throw IOException("Поиск не получил результатов. Это может быть DNS/сеть, CAPTCHA или ограничение источника. Подробности: $detail")
         }
         return found.values.take(8)
     }
@@ -200,6 +218,30 @@ class WebResearchEngine {
             .build()
         val html = executeSearchHtml(request)
         return WebHtmlParser.parseMojeek(html)
+    }
+
+    private fun searchGoogleNews(query: String, freshness: String): List<WebSearchHit> {
+        val language = Locale.getDefault().language.ifBlank { "en" }
+        val country = Locale.getDefault().country.ifBlank { "US" }.uppercase(Locale.ROOT)
+        val freshnessFilter = when (freshness) {
+            "day" -> " when:1d"
+            "week" -> " when:7d"
+            "month" -> " when:30d"
+            "year" -> " when:365d"
+            else -> ""
+        }
+        val encodedQuery = URLEncoder.encode(query + freshnessFilter, Charsets.UTF_8.name())
+        val url = "https://news.google.com/rss/search?q=$encodedQuery" +
+            "&hl=${URLEncoder.encode(language, Charsets.UTF_8.name())}" +
+            "&gl=$country&ceid=$country:${URLEncoder.encode(language, Charsets.UTF_8.name())}"
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/rss+xml,application/xml,text/xml")
+            .header("Accept-Language", "${language},en;q=0.8")
+            .get()
+            .build()
+        return WebHtmlParser.parseGoogleNewsRss(executeSearchHtml(request))
     }
 
     private fun executeSearchHtml(request: Request): String {
@@ -432,16 +474,38 @@ private fun isPublicAddress(address: InetAddress): Boolean {
 
 internal object WebHtmlParser {
     fun parseDuckDuckGo(html: String, limit: Int = 8): List<WebSearchHit> =
-        parseResultAnchors(html, "result__a", "result__snippet", limit)
+        parseResultAnchors(html, "result__a", "result__snippet", limit, "DuckDuckGo")
 
     fun parseMojeek(html: String, limit: Int = 8): List<WebSearchHit> =
-        parseResultAnchors(html, "ob", "s", limit)
+        parseResultAnchors(html, "ob", "s", limit, "Mojeek")
+
+    fun parseGoogleNewsRss(xml: String, limit: Int = 8): List<WebSearchHit> {
+        val itemPattern = Regex("""(?is)<item\\b[^>]*>(.*?)</item\\s*>""")
+        val results = linkedMapOf<String, WebSearchHit>()
+        itemPattern.findAll(xml).forEach { match ->
+            val item = match.groupValues[1]
+            fun tag(name: String): String {
+                val raw = Regex("""(?is)<$name\\b[^>]*>(.*?)</$name\\s*>""")
+                    .find(item)?.groupValues?.get(1).orEmpty().trim()
+                val unwrapped = raw.removePrefix("<![CDATA[").removeSuffix("]]>").trim()
+                return unwrapped
+            }
+            val title = WebHtmlParser.decodeFeedText(tag("title")).take(300)
+            val url = WebHtmlParser.decodeFeedText(tag("link")).trim()
+            val snippet = WebHtmlParser.stripFeedHtml(WebHtmlParser.decodeFeedText(tag("description"))).take(900)
+            if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
+            results.putIfAbsent(url, WebSearchHit(title, url, snippet, "Google News"))
+            if (results.size >= limit) return results.values.toList()
+        }
+        return results.values.toList()
+    }
 
     private fun parseResultAnchors(
         html: String,
         linkClass: String,
         snippetClass: String,
-        limit: Int
+        limit: Int,
+        source: String
     ): List<WebSearchHit> {
         val anchors = Regex("""(?is)<a\b([^>]*)>(.*?)</a>""").findAll(html).toList()
         val hits = linkedMapOf<String, WebSearchHit>()
@@ -460,7 +524,7 @@ internal object WebHtmlParser {
             val tailEnd = minOf(nextResultStart, anchor.range.last + 2_400, html.length)
             val tail = html.substring((anchor.range.last + 1).coerceAtMost(html.length), tailEnd.coerceAtLeast(anchor.range.last + 1))
             val snippet = extractClassText(tail, snippetClass).take(900)
-            hits.putIfAbsent(target, WebSearchHit(title, target, snippet))
+            hits.putIfAbsent(target, WebSearchHit(title, target, snippet, source))
             if (hits.size >= limit) return hits.values.toList()
         }
         return hits.values.toList()
@@ -522,6 +586,11 @@ internal object WebHtmlParser {
         source = Regex("""(?is)<[^>]+>""").replace(source, " ")
         return normalizePlainText(decodeHtml(source))
     }
+
+    internal fun decodeFeedText(input: String): String =
+        decodeHtml(input.removePrefix("<![CDATA[").removeSuffix("]]>").trim())
+
+    internal fun stripFeedHtml(input: String): String = stripHtml(input)
 
     private fun decodeHtml(input: String): String {
         val named = mapOf(
