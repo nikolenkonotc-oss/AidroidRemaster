@@ -48,6 +48,38 @@ class ProviderManager(context: Context) {
     fun newProviderId(): String = UUID.randomUUID().toString()
     fun apiKey(providerId: String): String? = credentials.get(providerId)
 
+    fun setToolCredential(toolId: String, value: String) {
+        require(toolId.matches(Regex("[a-z0-9_-]{1,48}")))
+        val storageKey = "tool:$toolId"
+        if (value.isBlank()) credentials.delete(storageKey) else credentials.put(storageKey, value.trim())
+    }
+
+    fun toolCredential(toolId: String): String? {
+        require(toolId.matches(Regex("[a-z0-9_-]{1,48}")))
+        return credentials.get("tool:$toolId")
+    }
+
+    fun saveCodeRunnerUrl(value: String) {
+        val clean = value.trim().trimEnd('/')
+        if (clean.isNotBlank()) validateLocalOrSecureEndpoint(clean)
+        saveAgentPreferences(agentPreferences().copy(codeRunnerUrl = clean))
+    }
+
+    private fun validateLocalOrSecureEndpoint(value: String) {
+        val parsed = runCatching { URI(value) }
+            .getOrElse { throw IllegalArgumentException("Проверь URL сервера выполнения кода.") }
+        require((parsed.scheme == "https" || parsed.scheme == "http") && !parsed.host.isNullOrBlank()) {
+            "URL сервера должен начинаться с https:// или http://."
+        }
+        if (parsed.scheme == "http") {
+            val host = parsed.host.lowercase()
+            val local = host == "localhost" || host == "127.0.0.1" || host == "::1" ||
+                host.endsWith(".local") || host.startsWith("10.") || host.startsWith("192.168.") ||
+                host.matches(Regex("172\\.(1[6-9]|2[0-9]|3[01])\\..*"))
+            require(local) { "Внешний сервер выполнения кода должен использовать HTTPS." }
+        }
+    }
+
     fun activeProviderId(): String? = preferences.getString(KEY_ACTIVE_PROVIDER, null)
 
     fun activeProvider(): ProviderConfig? {
