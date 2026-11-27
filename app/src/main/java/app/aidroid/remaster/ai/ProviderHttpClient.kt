@@ -322,29 +322,40 @@ class ProviderHttpClient {
                 val role = if (message.role == "assistant") "model" else "user"
                 add(buildJsonObject {
                     put("role", role)
-                    putJsonArray("parts") {
-                        if (message.role == "tool") {
-                            add(buildJsonObject {
-                                putJsonObject("functionResponse") {
-                                    put("name", message.name ?: "tool")
-                                    putJsonObject("response") { put("result", message.content) }
-                                }
-                            })
-                        } else {
-                            if (message.content.isNotBlank()) add(buildJsonObject { put("text", message.content) })
-                            message.toolCalls.forEach { call ->
+                    when {
+                        message.role == "assistant" && message.providerContent != null -> {
+                            // Preserve Gemini thoughtSignature and native function-call parts on tool continuation.
+                            put("parts", message.providerContent)
+                        }
+                        message.role == "tool" -> {
+                            putJsonArray("parts") {
                                 add(buildJsonObject {
-                                    putJsonObject("functionCall") {
-                                        put("name", call.name)
-                                        put("args", call.arguments)
+                                    putJsonObject("functionResponse") {
+                                        put("name", message.name ?: "tool")
+                                        putJsonObject("response") { put("result", message.content) }
                                     }
                                 })
+                            }
+                        }
+                        else -> {
+                            putJsonArray("parts") {
+                                if (message.content.isNotBlank()) add(buildJsonObject { put("text", message.content) })
+                                message.toolCalls.forEach { call ->
+                                    add(buildJsonObject {
+                                        putJsonObject("functionCall") {
+                                            put("name", call.name)
+                                            put("args", call.arguments)
+                                        }
+                                    })
+                                }
                             }
                         }
                     }
                 })
             }
         }
+        val gemini3OrLater = request.model.startsWith("gemini-3", ignoreCase = true) ||
+            request.model.startsWith("gemini-4", ignoreCase = true)
         val payload = buildJsonObject {
             if (system.isNotBlank()) putJsonObject("systemInstruction") {
                 putJsonArray("parts") { add(buildJsonObject { put("text", system) }) }
@@ -353,11 +364,19 @@ class ProviderHttpClient {
             if (request.tools.isNotEmpty()) put("tools", geminiTools(request.tools))
             if (config.supportsReasoning) putJsonObject("generationConfig") {
                 putJsonObject("thinkingConfig") {
-                    put("thinkingLevel", when (request.reasoningMode) {
-                        ReasoningMode.FAST -> "low"
-                        ReasoningMode.BALANCED -> "medium"
-                        ReasoningMode.DEEP -> "high"
-                    })
+                    if (gemini3OrLater) {
+                        put("thinkingLevel", when (request.reasoningMode) {
+                            ReasoningMode.FAST -> "low"
+                            ReasoningMode.BALANCED -> "medium"
+                            ReasoningMode.DEEP -> "high"
+                        })
+                    } else {
+                        put("thinkingBudget", when (request.reasoningMode) {
+                            ReasoningMode.FAST -> 1024
+                            ReasoningMode.BALANCED -> 8192
+                            ReasoningMode.DEEP -> 16384
+                        })
+                    }
                 }
             }
         }
@@ -374,7 +393,7 @@ class ProviderHttpClient {
                 arguments = call["args"]?.jsonObject ?: buildJsonObject { }
             )
         }
-        return LlmResponse(text.trim(), calls)
+        return LlmResponse(text.trim(), calls, providerContent = parts)
     }
 
     private fun post(url: String, payload: JsonObject, headers: Map<String, String> = emptyMap()): JsonObject {
