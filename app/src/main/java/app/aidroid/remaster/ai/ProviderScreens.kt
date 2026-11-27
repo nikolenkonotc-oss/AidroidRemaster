@@ -169,7 +169,7 @@ private fun ProviderEditorDialog(
     var baseUrl by remember(initial?.id) { mutableStateOf(initial?.baseUrl ?: defaultBaseUrl(ProviderType.OPENAI)) }
     var model by remember(initial?.id) { mutableStateOf(initial?.model.orEmpty()) }
     var apiKey by remember(initial?.id) { mutableStateOf("") }
-    var supportsReasoning by remember(initial?.id) { mutableStateOf(initial?.supportsReasoning ?: false) }
+    var supportsReasoning by remember(initial?.id) { mutableStateOf(initial?.supportsReasoning ?: (initial?.type ?: ProviderType.OPENAI) in setOf(ProviderType.OPENAI, ProviderType.ANTHROPIC, ProviderType.GEMINI)) }
     var typeMenu by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -281,7 +281,7 @@ private fun ProviderEditorDialog(
         confirmButton = {
             TextButton(
                 enabled = !loading && name.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank() &&
-                    (type == ProviderType.OLLAMA || apiKey.isNotBlank() || (initial != null && !manager.apiKey(initial.id).isNullOrBlank())),
+                    (type == ProviderType.OLLAMA || type == ProviderType.OPENAI_COMPATIBLE || apiKey.isNotBlank() || (initial != null && !manager.apiKey(initial.id).isNullOrBlank())),
                 onClick = {
                     runCatching {
                         manager.saveProvider(
