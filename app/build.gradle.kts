@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.firebase.storage)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.okhttp)
+    implementation(libs.pdfbox.android)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
