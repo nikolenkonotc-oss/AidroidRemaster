@@ -91,13 +91,16 @@ class WebResearchEngine {
 
         // Google News RSS is an independent, keyless feed. It is intentionally a
         // supplement for thin search results, not a replacement for general web search.
-        if (found.size < 5 || freshness != "any") {
+        val newsHits = if (found.size < 5 || freshness != "any") {
             runCatching { searchGoogleNews(query, freshness) }
-                .onSuccess { hits ->
-                    hits.forEach { found.putIfAbsent(it.url, it) }
-                    if (hits.isEmpty()) errors += "Google News RSS: лента не вернула подходящих материалов"
-                }
                 .onFailure { errors += "Google News RSS: ${it.message}" }
+                .getOrElse { emptyList() }
+        } else {
+            emptyList()
+        }
+        newsHits.forEach { found.putIfAbsent(it.url, it) }
+        if (newsHits.isEmpty() && (found.size < 5 || freshness != "any")) {
+            errors += "Google News RSS: лента не вернула подходящих материалов"
         }
 
         // MediaWiki's documented Action API provides a keyless encyclopedia fallback.
@@ -115,7 +118,9 @@ class WebResearchEngine {
             val detail = errors.take(3).joinToString("; ").ifBlank { "источники не вернули результатов" }
             throw IOException("Поиск не получил результатов. Это может быть DNS/сеть, CAPTCHA или ограничение источника. Подробности: $detail")
         }
-        return found.values.take(8)
+        // For explicitly fresh queries, place dated news results ahead of general web hits.
+        val ordered = if (freshness != "any") newsHits + found.values else found.values.toList()
+        return ordered.distinctBy { it.url }.take(8)
     }
 
     fun openPage(input: String): WebPageContent {
