@@ -9,6 +9,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
@@ -201,21 +202,40 @@ class AgentToolExecutor(
             "Для редактирования добавь подключение OpenAI с действующим API-ключом."
         )
         val apiKey = providers.apiKey(provider.id) ?: error("Не найден API-ключ OpenAI.")
-        val payload = buildJsonObject {
-            put("model", "gpt-image-2.5-sunburst")
-            put("prompt", prompt)
-            put("size", "1024x1024")
-            put("quality", "medium")
-            put("output_format", "png")
-            put("images", buildJsonArray {
-                latestUserImages.take(4).forEach { image ->
-                    add(buildJsonObject {
-                        put("image_url", "data:${image.mimeType};base64,${image.base64}")
-                    })
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("model", "gpt-image-2.5-sunburst")
+            .addFormDataPart("prompt", prompt)
+            .addFormDataPart("size", "1024x1024")
+            .addFormDataPart("quality", "medium")
+            .addFormDataPart("output_format", "png")
+            .apply {
+                latestUserImages.take(4).forEachIndexed { index, image ->
+                    val mime = image.mimeType.lowercase().substringBefore(';')
+                    require(mime in setOf("image/jpeg", "image/png", "image/webp")) {
+                        "Формат $mime не поддерживается для редактирования."
+                    }
+                    val extension = when (mime) {
+                        "image/jpeg" -> "jpg"
+                        "image/webp" -> "webp"
+                        else -> "png"
+                    }
+                    val bytes = android.util.Base64.decode(image.base64, android.util.Base64.DEFAULT)
+                    require(bytes.isNotEmpty()) { "Исходное изображение пустое или повреждено." }
+                    addFormDataPart(
+                        "image[]",
+                        "aidroid_source_${index + 1}.$extension",
+                        bytes.toRequestBody(mime.toMediaType())
+                    )
                 }
-            })
-        }
-        val response = postJson(openAiEndpoint(provider.baseUrl, "/images/edits"), payload, mapOf("Authorization" to "Bearer $apiKey"))
+            }
+            .build()
+        val request = Request.Builder()
+            .url(openAiEndpoint(provider.baseUrl, "/images/edits"))
+            .header("Authorization", "Bearer $apiKey")
+            .post(requestBody)
+            .build()
+        val response = executeJson(request)
         val encoded = response["data"]?.jsonArray?.firstOrNull()
             ?.jsonObject?.get("b64_json")?.jsonPrimitive?.contentOrNull
             ?: throw IllegalStateException("API редактирования не вернул изображение.")
@@ -377,10 +397,16 @@ class AgentToolExecutor(
         }
     )
 
-    private fun imageProvider(): ProviderConfig? =
-        providers.providers().firstOrNull {
-            it.type == ProviderType.OPENAI && !providers.apiKey(it.id).isNullOrBlank()
+    private fun imageProvider(): ProviderConfig? {
+        val candidates = providers.providers().filter {
+            it.type in setOf(ProviderType.OPENAI, ProviderType.OPENAI_COMPATIBLE) &&
+                !providers.apiKey(it.id).isNullOrBlank()
         }
+        val activeId = providers.activeProvider()?.id
+        return candidates.firstOrNull { it.id == activeId }
+            ?: candidates.firstOrNull { it.type == ProviderType.OPENAI }
+            ?: candidates.firstOrNull()
+    }
 
     private fun openAiEndpoint(baseUrl: String, path: String): String {
         val root = baseUrl.trimEnd('/')
@@ -402,13 +428,27 @@ class AgentToolExecutor(
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val detail = runCatching {
-                    val root = json.parseToJsonElement(body)
-                    root.jsonObject["message"]?.jsonPrimitive?.contentOrNull
-                        ?: root.jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                    val root = json.parseToJsonElement(body) as? JsonObject
+                    val error = root?.get("error")
+                    val errorObject = error as? JsonObject
+                    ((errorObject?.get("message") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((errorObject?.get("detail") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((error as? JsonPrimitive)?.contentOrNull)
+                        ?: ((root?.get("message") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((root?.get("detail") as? JsonPrimitive)?.contentOrNull)
                 }.getOrNull()
-                throw IllegalStateException(detail ?: "Сервис инструмента вернул HTTP ${response.code}.")
+                val safeBody = body
+                    .filter { !it.isISOControl() || it == '\\n' || it == '\\r' || it == '\\t' }
+                    .trim()
+                    .take(700)
+                throw IllegalStateException(
+                    detail?.takeIf { it.isNotBlank() }
+                        ?: safeBody.takeIf { it.isNotBlank() }
+                        ?: "Сервис инструмента вернул HTTP ${response.code} без описания ошибки."
+                )
             }
-            return json.parseToJsonElement(body)
+            return runCatching { json.parseToJsonElement(body) }
+                .getOrElse { throw IllegalStateException("Сервис инструмента вернул некорректный JSON (HTTP ${response.code}).") }
         }
     }
 
