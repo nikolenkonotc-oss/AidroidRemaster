@@ -193,8 +193,10 @@ class AgentToolExecutor(
             "Для генерации изображений добавь подключение OpenAI с действующим API-ключом. Выбранная модель чата может быть любой."
         )
         val apiKey = providers.apiKey(provider.id) ?: error("Не найден API-ключ OpenAI.")
+        val imageModel = providers.agentPreferences().imageGenerationModel.trim()
+            .ifBlank { "gpt-image-2.6-flare" }
         val payload = buildJsonObject {
-            put("model", "gpt-image-2.5-flare")
+            put("model", imageModel)
             put("prompt", prompt)
             // Image gateway used by this provider supports automatic dimensions only.
             put("size", "auto")
