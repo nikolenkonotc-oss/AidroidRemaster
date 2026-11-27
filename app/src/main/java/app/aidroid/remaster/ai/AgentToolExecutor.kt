@@ -513,6 +513,7 @@ class AgentToolExecutor(
         return try {
             request()
         } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             val causes = generateSequence<Throwable>(error) { it.cause }.take(8).toList()
             val details = causes.mapNotNull { it.message }.joinToString(" · ").take(900)
             val unsupportedFeature = causes.any {
