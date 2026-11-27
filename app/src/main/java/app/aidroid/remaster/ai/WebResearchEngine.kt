@@ -610,6 +610,7 @@ internal object WebHtmlParser {
 
     fun normalizePlainText(input: String): String =
         input.replace("\u0000", "").replace(Regex("""[ \t]{2,}"""), " ")
+            .replace(Regex("""\s+([,.;:!?])"""), "$1")
             .replace(Regex("""\n{3,}"""), "\n\n").trim()
 
     private fun extractClassText(source: String, token: String): String {
