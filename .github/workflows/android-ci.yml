@@ -43,6 +43,10 @@ jobs:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.AIDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "::notice::No Firebase signing secret is exposed to this pull request. CI will use a temporary debug key for verification only."
+              exit 0
+            fi
             echo "::error::AIDROID_DEBUG_KEYSTORE_BASE64 is missing. Add the Firebase-registered debug keystore as a repository Actions secret."
             exit 1
           fi
