@@ -107,6 +107,7 @@ import app.aidroid.remaster.data.ChatRepository
 import app.aidroid.remaster.data.AccountProfile
 import app.aidroid.remaster.data.AccountProfileStore
 import app.aidroid.remaster.auth.GoogleAuthClient
+import app.aidroid.remaster.sync.FirebaseCloudSync
 import app.aidroid.remaster.data.attachments.AttachmentJson
 import app.aidroid.remaster.data.attachments.AttachmentStorage
 import app.aidroid.remaster.data.attachments.StoredAttachment
@@ -138,6 +139,20 @@ private val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE chats ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE chats ADD COLUMN deletedAt INTEGER")
+        database.execSQL("UPDATE chats SET syncId = 'legacy-chat-' || id WHERE syncId = ''")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_chats_syncId ON chats(syncId)")
+
+        database.execSQL("ALTER TABLE messages ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE messages ADD COLUMN deletedAt INTEGER")
+        database.execSQL("UPDATE messages SET syncId = 'legacy-message-' || id WHERE syncId = ''")
+        database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_messages_syncId ON messages(syncId)")
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -145,15 +160,16 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AidroidDatabase::class.java,
             "aidroid-remaster.db"
-        ).addMigrations(MIGRATION_1_2).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
         val attachmentStorage = AttachmentStorage(applicationContext)
-        val repository = ChatRepository(database.chatDao(), attachmentStorage)
-        setContent { AidroidApp(repository) }
+        val cloudSync = FirebaseCloudSync(applicationContext)
+        val repository = ChatRepository(database.chatDao(), attachmentStorage, cloudSync)
+        setContent { AidroidApp(repository, cloudSync) }
     }
 }
 
 @Composable
-private fun AidroidApp(repository: ChatRepository) {
+private fun AidroidApp(repository: ChatRepository, cloudSync: FirebaseCloudSync) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val themePreferences = remember(context) {
         context.getSharedPreferences("aidroid_remaster_preferences", Context.MODE_PRIVATE)
@@ -168,7 +184,37 @@ private fun AidroidApp(repository: ChatRepository) {
     val googleAuthClient = remember(context) { GoogleAuthClient(context) }
     val coroutineScope = rememberCoroutineScope()
     var accountProfile by remember { mutableStateOf(accountStore.load()) }
-    LaunchedEffect(accountProfile) { accountStore.save(accountProfile) }
+    var cloudProfileReady by remember { mutableStateOf(false) }
+    var syncLoading by rememberSaveable { mutableStateOf(false) }
+    var syncStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (cloudSync.isSignedIn) {
+            try {
+                cloudSync.loadProfile()?.let { remote ->
+                    accountProfile = remote.copy(
+                        accountType = "google",
+                        email = remote.email.ifBlank { accountProfile.email }
+                    )
+                }
+                repository.syncNow()
+            } catch (error: Exception) {
+                syncStatus = "Не удалось получить облачные данные: ${error.message ?: "ошибка"}"
+            }
+        }
+        cloudProfileReady = true
+    }
+    LaunchedEffect(accountProfile, cloudProfileReady) {
+        accountStore.save(accountProfile)
+        if (cloudProfileReady && accountProfile.accountType == "google" && cloudSync.isSignedIn) {
+            delay(700)
+            try {
+                val synced = cloudSync.syncProfile(accountProfile)
+                if (synced != accountProfile) accountProfile = synced
+            } catch (error: Exception) {
+                syncStatus = "Профиль сохранён локально. Синхронизация: ${error.message ?: "ошибка"}"
+            }
+        }
+    }
     var accountPageOpen by rememberSaveable { mutableStateOf(false) }
     var googleSignInLoading by rememberSaveable { mutableStateOf(false) }
     var accountError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -282,7 +328,25 @@ private fun AidroidApp(repository: ChatRepository) {
                                     AccountScreen(
                                         profile = accountProfile,
                                         googleLoading = googleSignInLoading,
+                                        googleReady = googleAuthClient.isConfigured && cloudSync.isConfigured,
+                                        syncLoading = syncLoading,
+                                        syncStatus = syncStatus,
                                         errorMessage = accountError,
+                                        onSyncNow = {
+                                            coroutineScope.launch {
+                                                syncLoading = true
+                                                syncStatus = null
+                                                try {
+                                                    accountProfile = cloudSync.syncProfile(accountProfile)
+                                                    repository.syncNow()
+                                                    syncStatus = "Синхронизация завершена"
+                                                } catch (error: Exception) {
+                                                    syncStatus = error.message ?: "Не удалось синхронизировать данные."
+                                                } finally {
+                                                    syncLoading = false
+                                                }
+                                            }
+                                        },
                                         onBack = {
                                             accountPageOpen = false
                                             accountError = null
@@ -295,6 +359,7 @@ private fun AidroidApp(repository: ChatRepository) {
                                                 username = accountProfile.username.ifBlank { "user" }
                                             )
                                             accountError = null
+                                            syncStatus = null
                                         },
                                         onGoogleSignIn = {
                                             val activity = context.findActivity()
@@ -306,15 +371,24 @@ private fun AidroidApp(repository: ChatRepository) {
                                                     accountError = null
                                                     try {
                                                         val google = googleAuthClient.signIn(activity)
-                                                        accountProfile = accountProfile.copy(
+                                                        val cloudAccount = cloudSync.signInWithGoogle(google.idToken)
+                                                        val remoteProfile = cloudSync.loadProfile()
+                                                        val signedInProfile = remoteProfile?.copy(
                                                             accountType = "google",
-                                                            displayName = google.displayName,
+                                                            email = cloudAccount.email.ifBlank { google.email },
+                                                            googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
+                                                        ) ?: accountProfile.copy(
+                                                            accountType = "google",
+                                                            displayName = accountProfile.displayName.ifBlank { google.displayName },
                                                             username = accountProfile.username.ifBlank {
                                                                 google.email.substringBefore("@").replace(Regex("[^A-Za-z0-9_]"), "")
                                                             },
-                                                            email = google.email,
-                                                            googlePhotoUrl = google.photoUrl.orEmpty()
+                                                            email = cloudAccount.email.ifBlank { google.email },
+                                                            googlePhotoUrl = cloudAccount.photoUrl ?: google.photoUrl.orEmpty()
                                                         )
+                                                        accountProfile = cloudSync.syncProfile(signedInProfile)
+                                                        repository.syncNow()
+                                                        syncStatus = "Google подключён · синхронизация завершена"
                                                     } catch (cancelled: CancellationException) {
                                                         throw cancelled
                                                     } catch (error: Exception) {
@@ -328,17 +402,17 @@ private fun AidroidApp(repository: ChatRepository) {
                                         onSignOut = {
                                             coroutineScope.launch {
                                                 if (accountProfile.accountType == "google") {
+                                                    cloudSync.signOut()
                                                     try {
                                                         googleAuthClient.signOut()
                                                     } catch (error: Exception) {
-                                                        accountError = "Не удалось очистить сессию Google: ${error.message ?: "ошибка"}"
+                                                        accountError = "Не удалось очистить выбор Google: ${error.message ?: "ошибка"}"
                                                     }
                                                 }
-                                                accountProfile = accountProfile.copy(
-                                                    accountType = "",
-                                                    email = "",
-                                                    googlePhotoUrl = ""
-                                                )
+                                                accountStore.clear()
+                                                accountProfile = AccountProfile()
+                                                syncStatus = null
+                                                accountError = null
                                             }
                                         }
                                     )
