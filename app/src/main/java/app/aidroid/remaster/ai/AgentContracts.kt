@@ -43,7 +43,8 @@ data class LlmMessage(
     val content: String,
     val toolCalls: List<LlmToolCall> = emptyList(),
     val toolCallId: String? = null,
-    val name: String? = null
+    val name: String? = null,
+    val providerContent: JsonArray? = null
 )
 
 data class LlmToolCall(
@@ -68,7 +69,8 @@ data class LlmRequest(
 
 data class LlmResponse(
     val text: String,
-    val toolCalls: List<LlmToolCall> = emptyList()
+    val toolCalls: List<LlmToolCall> = emptyList(),
+    val providerContent: JsonArray? = null
 )
 
 data class AvailableModel(
