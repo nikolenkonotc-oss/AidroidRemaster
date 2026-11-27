@@ -18,6 +18,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -46,9 +47,18 @@ class AgentRunner(
     private val actionReplies = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val _pendingAction = MutableStateFlow<AgentExternalAction?>(null)
     val pendingAction: StateFlow<AgentExternalAction?> = _pendingAction.asStateFlow()
+    private val _activeChatIds = MutableStateFlow<Set<Long>>(emptySet())
+    val activeChatIds: StateFlow<Set<Long>> = _activeChatIds.asStateFlow()
 
     suspend fun respondToChat(chatId: Long): AgentRunResult =
-        chatLocks.computeIfAbsent(chatId) { Mutex() }.withLock { executeResponse(chatId) }
+        chatLocks.computeIfAbsent(chatId) { Mutex() }.withLock {
+            _activeChatIds.update { it + chatId }
+            try {
+                executeResponse(chatId)
+            } finally {
+                _activeChatIds.update { it - chatId }
+            }
+        }
 
     fun isToolEnabled(toolId: String): Boolean = toolId in providers.agentPreferences().enabledTools
 
