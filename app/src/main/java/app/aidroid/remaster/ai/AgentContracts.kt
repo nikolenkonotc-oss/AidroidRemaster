@@ -104,7 +104,8 @@ data class AvailableModel(
 )
 
 enum class AgentActionType {
-    CODE_EXECUTION
+    CODE_EXECUTION,
+    ANDROID_CONTROL
 }
 
 data class AgentExternalAction(
