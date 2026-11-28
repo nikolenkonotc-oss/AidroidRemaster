@@ -466,6 +466,41 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.1.sp
                 )
+                Text(
+                    "УПРАВЛЕНИЕ ANDROID",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
+                ToolPreferenceRow(
+                    title = "Состояние устройства",
+                    description = "Модель телефона, версия Android, уровень и состояние батареи",
+                    checked = "android_device_status" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_device_status", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Открытие системных настроек",
+                    description = "Открывать разрешённые разделы Android после подтверждения",
+                    checked = "android_open_settings" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_open_settings", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Громкость мультимедиа",
+                    description = "Устанавливать громкость звука в процентах после подтверждения",
+                    checked = "android_set_media_volume" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_set_media_volume", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                Text(
+                    "ОСТАЛЬНЫЕ ИНСТРУМЕНТЫ",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
                 ToolPreferenceRow(
                     title = "Калькулятор",
                     description = "Безопасное локальное вычисление арифметики",
@@ -616,7 +651,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Поиск работает без обязательных ключей. Для персонального лимита можно добавить собственный ключ поискового API. Запуск кода требует отдельного подтверждения.",
+                    "Управление Android включается отдельно. Открытие настроек и изменение громкости требуют подтверждения; системные переключатели пользователь меняет самостоятельно.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
