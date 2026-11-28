@@ -332,8 +332,8 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var providerMenu by remember { mutableStateOf(false) }
     var imageProviderMenu by remember { mutableStateOf(false) }
     var savedNotice by remember { mutableStateOf<String?>(null) }
-    var mwmblKey by remember { mutableStateOf(manager.toolCredential("mwmbl_search").orEmpty()) }
-    var mwmblKeyVisible by remember { mutableStateOf(false) }
+    var tavilyKey by remember { mutableStateOf(manager.toolCredential("tavily_search").orEmpty()) }
+    var tavilyKeyVisible by remember { mutableStateOf(false) }
     var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
     var braveKeyVisible by remember { mutableStateOf(false) }
     var imageGenerationModel by remember { mutableStateOf(preferences.imageGenerationModel) }
@@ -625,53 +625,48 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("НАСТРОЙКИ ВЕБ-ПОИСКА", fontWeight = FontWeight.Bold)
+                Text("ПОИСК В ИНТЕРНЕТЕ", fontWeight = FontWeight.Bold)
                 Text(
-                    "Основной источник — Mwmbl Search API с собственным поисковым индексом и структурированными JSON-результатами. Без ключа действует анонимный лимит сервиса; личный ключ привязывает запросы к твоему аккаунту. Если Mwmbl вернёт мало результатов или будет недоступен, приложение попробует резервные источники.",
+                    "Основной поиск работает через Tavily Search API. Введи собственный ключ Tavily. Brave Search можно подключить как резервный источник: он будет вызван только если Tavily не настроен, вернул ошибку или не дал результатов. Старые HTML-поисковики и Mwmbl больше не используются.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
-                    value = mwmblKey,
-                    onValueChange = { mwmblKey = it },
+                    value = tavilyKey,
+                    onValueChange = { tavilyKey = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Личный Mwmbl API key (необязательно)") },
+                    label = { Text("Tavily API key") },
                     singleLine = true,
-                    visualTransformation = if (mwmblKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
+                    visualTransformation = if (tavilyKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
                         else PasswordVisualTransformation(),
                     trailingIcon = {
-                        TextButton(onClick = { mwmblKeyVisible = !mwmblKeyVisible }) {
-                            Text(if (mwmblKeyVisible) "Скрыть" else "Показать")
+                        TextButton(onClick = { tavilyKeyVisible = !tavilyKeyVisible }) {
+                            Text(if (tavilyKeyVisible) "Скрыть" else "Показать")
                         }
                     }
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     Button(
                         onClick = {
-                            manager.setToolCredential("mwmbl_search", mwmblKey)
-                            savedNotice = if (mwmblKey.isBlank()) "Личный ключ Mwmbl удалён" else "Личный ключ Mwmbl сохранён"
+                            manager.setToolCredential("tavily_search", tavilyKey)
+                            savedNotice = if (tavilyKey.isBlank()) "Ключ Tavily удалён" else "Ключ Tavily сохранён"
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Сохранить ключ Mwmbl") }
+                    ) { Text("Сохранить Tavily") }
                     OutlinedButton(
                         onClick = {
-                            mwmblKey = ""
-                            manager.setToolCredential("mwmbl_search", "")
-                            savedNotice = "Личный ключ Mwmbl удалён"
+                            tavilyKey = ""
+                            manager.setToolCredential("tavily_search", "")
+                            savedNotice = "Ключ Tavily удалён"
                         }
                     ) { Text("Удалить") }
                 }
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                Text(
-                    "Дополнительный Brave Search можно оставить как ещё один резервный источник.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
                 OutlinedTextField(
                     value = braveKey,
                     onValueChange = { braveKey = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Необязательный Brave Search API key") },
+                    label = { Text("Brave Search API key (резерв)") },
                     singleLine = true,
                     visualTransformation = if (braveKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
                         else PasswordVisualTransformation(),
@@ -685,20 +680,20 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     Button(
                         onClick = {
                             manager.setToolCredential("brave_search", braveKey)
-                            savedNotice = if (braveKey.isBlank()) "Ключ поиска удалён" else "Ключ поиска сохранён"
+                            savedNotice = if (braveKey.isBlank()) "Ключ Brave удалён" else "Ключ Brave сохранён"
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Сохранить ключ") }
+                    ) { Text("Сохранить Brave") }
                     OutlinedButton(
                         onClick = {
                             braveKey = ""
                             manager.setToolCredential("brave_search", "")
-                            savedNotice = "Ключ поиска удалён"
+                            savedNotice = "Ключ Brave удалён"
                         }
                     ) { Text("Удалить") }
                 }
                 Text(
-                    "Brave используется только как резерв, если бесплатные источники не вернули результаты. При пустом поле никакой ключ или регистрация не требуются.",
+                    "Оба ключа хранятся в защищённом хранилище приложения. Если Tavily не настроен, поиск автоматически попробует Brave при наличии его ключа. Если оба ключа пусты, веб-поиск сообщит, какой ключ нужно добавить.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
