@@ -167,10 +167,6 @@ class WebResearchEngine {
         }
     }
 
-    private companion object {
-        @Volatile private var lastMwmblRequestAt: Long = 0L
-    }
-
     fun openPage(input: String): WebPageContent {
         require(input.length <= 2_048) { "Ссылка слишком длинная." }
         var current = validateUri(URI(input.trim()))
@@ -355,6 +351,7 @@ class WebResearchEngine {
     }
 
     companion object {
+        @Volatile private var lastMwmblRequestAt: Long = 0L
         private const val MAX_REDIRECTS = 4
         private const val MAX_PAGE_BYTES = 1_500_000L
         private const val MAX_SEARCH_BYTES = 1_000_000L
