@@ -293,7 +293,7 @@ object TermuxCommandTools {
             )
         }
 
-        val version = Regex("""^(\\d+)\\.(\\d+)(?:\\.(\\d+))?""")
+        val version = Regex("""^(\d+)\.(\d+)(?:\.(\d+))?""")
             .find(info.versionName.orEmpty())
             ?.groupValues
             ?.drop(1)
