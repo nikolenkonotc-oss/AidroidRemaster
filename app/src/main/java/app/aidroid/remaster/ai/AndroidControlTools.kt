@@ -10,6 +10,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
 import kotlinx.serialization.json.*
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -171,8 +172,15 @@ object AndroidControlTools {
     fun prepare(name: String, arguments: JsonObject, chatId: Long): AgentToolResult =
         when (name) {
             "android_open_settings" -> {
-                val section = arguments["section"]?.jsonPrimitive?.contentOrNull?.lowercase()
+                val rawSection = arguments["section"]?.jsonPrimitive?.contentOrNull
                     ?: throw IllegalArgumentException("Не указан раздел настроек Android.")
+                // Android intent action names are case-sensitive. Preserve their canonical
+                // uppercase suffix instead of lowercasing the full action string.
+                val section = if (rawSection.startsWith("android.settings.", ignoreCase = true)) {
+                    "android.settings.${rawSection.substringAfterLast('.').uppercase(Locale.ROOT)}"
+                } else {
+                    rawSection.lowercase(Locale.ROOT)
+                }
                 val label = settingsSections[section] ?: customSettingsLabel(section)
                 actionResult(
                     chatId = chatId,
