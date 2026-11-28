@@ -41,6 +41,29 @@ class AndroidControlToolsTest {
     }
 
     @Test
+    fun openingAValidGenericAndroidSettingsActionIsAllowed() {
+        val result = AndroidControlTools.prepare(
+            "android_open_settings",
+            buildJsonObject { put("section", "android.settings.APP_SEARCH_SETTINGS") },
+            chatId = 42L
+        )
+
+        assertEquals("open_settings", result.action?.subject)
+        assertEquals("android.settings.APP_SEARCH_SETTINGS", result.action?.body)
+    }
+
+    @Test
+    fun openingCriticalFactoryResetSettingsIsRejected() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AndroidControlTools.prepare(
+                "android_open_settings",
+                buildJsonObject { put("section", "android.settings.FACTORY_RESET") },
+                chatId = 42L
+            )
+        }
+    }
+
+    @Test
     fun openingAnUnlistedSettingsSectionIsRejected() {
         assertThrows(IllegalArgumentException::class.java) {
             AndroidControlTools.prepare(
