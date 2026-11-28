@@ -8,6 +8,57 @@ import org.junit.Test
 
 class WebResearchEngineTest {
     @Test
+    fun parsesMwmblJsonSearchResults() {
+        val json = """
+            {
+              "query": "android",
+              "number_of_results": 1,
+              "results": [
+                {
+                  "url": "https://developer.android.com/",
+                  "title": "Android Developers",
+                  "content": "Build apps for Android devices.",
+                  "engine": "mwmbl",
+                  "score": 1.0
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val result = WebHtmlParser.parseMwmblSearch(json).single()
+
+        assertEquals("Android Developers", result.title)
+        assertEquals("https://developer.android.com/", result.url)
+        assertEquals("Build apps for Android devices.", result.snippet)
+        assertEquals("Mwmbl", result.source)
+    }
+
+    @Test
+    fun filtersUnsafeMwmblUrlsAndDeduplicatesResults() {
+        val json = """
+            {
+              "results": [
+                {"url":"https://example.com/a","title":"First","content":"One","engine":"mwmbl"},
+                {"url":"https://example.com/a","title":"Duplicate","content":"Two","engine":"mwmbl"},
+                {"url":"http://127.0.0.1/private","title":"Local","content":"Unsafe","engine":"mwmbl"},
+                {"url":"file:///etc/passwd","title":"File","content":"Unsafe","engine":"mwmbl"}
+              ]
+            }
+        """.trimIndent()
+
+        val result = WebHtmlParser.parseMwmblSearch(json)
+
+        assertEquals(1, result.size)
+        assertEquals("First", result.single().title)
+    }
+
+    @Test
+    fun rejectsMalformedMwmblJson() {
+        val result = runCatching { WebHtmlParser.parseMwmblSearch("{not-json") }
+        assertTrue(result.isFailure)
+    }
+
+    @Test
     fun parsesDuckDuckGoSearchResultsAndUnwrapsTargetUrl() {
         val html = """
             <div class="result">
