@@ -325,17 +325,9 @@ object TermuxCommandTools {
             throw IllegalStateException("Termux не установлен или Android не видит пакет com.termux.")
         }
 
-        val version = Regex("""^(\d+)\.(\d+)(?:\.(\d+))?""")
-            .find(info.versionName.orEmpty())
-            ?.groupValues
-            ?.drop(1)
-            ?.mapNotNull { it.toIntOrNull() }
-        if (version == null || version[0] == 0 && (version.getOrElse(1) { 0 } < 109)) {
-            throw IllegalStateException(
-                "Нужен Termux версии 0.109 или новее для возврата результата команды. Обнови Termux и повтори запрос."
-            )
-        }
-
+        // Do not impose a version-number cutoff. Termux builds can expose
+        // RUN_COMMAND independently of their versionName format; verify the
+        // actual permission and service below, then report real bridge errors.
         // Verify that the installed Termux build actually declares the custom
         // permission before asking Android to grant it to Aidroid.
         val permissionOwner = runCatching {
@@ -343,7 +335,19 @@ object TermuxCommandTools {
         }.getOrNull()
         if (permissionOwner != TERMUX_PACKAGE) {
             throw IllegalStateException(
-                "Установленная сборка Termux не публикует разрешение RUN_COMMAND. Команда не запускалась; проверь, что установлен Termux с поддержкой RUN_COMMAND."
+                "Установленная сборка Termux не публикует разрешение RUN_COMMAND. Команда не запускалась; проверь, что установлен официальный Termux с поддержкой RUN_COMMAND."
+            )
+        }
+
+        val serviceAvailable = runCatching {
+            context.packageManager.getServiceInfo(
+                ComponentName(TERMUX_PACKAGE, TERMUX_SERVICE),
+                0
+            )
+        }.isSuccess
+        if (!serviceAvailable) {
+            throw IllegalStateException(
+                "В установленной сборке Termux не найден RunCommandService. Версия приложения не ограничивается числом: нужна сборка Termux, в которой доступен мост RUN_COMMAND."
             )
         }
 
