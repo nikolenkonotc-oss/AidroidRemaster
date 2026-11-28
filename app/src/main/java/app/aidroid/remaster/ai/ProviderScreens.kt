@@ -332,6 +332,8 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var providerMenu by remember { mutableStateOf(false) }
     var imageProviderMenu by remember { mutableStateOf(false) }
     var savedNotice by remember { mutableStateOf<String?>(null) }
+    var mwmblKey by remember { mutableStateOf(manager.toolCredential("mwmbl_search").orEmpty()) }
+    var mwmblKeyVisible by remember { mutableStateOf(false) }
     var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
     var braveKeyVisible by remember { mutableStateOf(false) }
     var imageGenerationModel by remember { mutableStateOf(preferences.imageGenerationModel) }
@@ -614,7 +616,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Каждый вызов проверяется приложением. Базовый веб-поиск не требует ключей и регистрации. Запуск кода требует отдельного подтверждения.",
+                    "Поиск работает без обязательных ключей. Для персонального лимита можно добавить собственный ключ поискового API. Запуск кода требует отдельного подтверждения.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -623,9 +625,45 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
 
         GlassPanel(modifier = Modifier.fillMaxWidth(), cornerRadius = 24) {
             Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("НЕОБЯЗАТЕЛЬНЫЙ РЕЗЕРВНЫЙ ПОИСК", fontWeight = FontWeight.Bold)
+                Text("НАСТРОЙКИ ВЕБ-ПОИСКА", fontWeight = FontWeight.Bold)
                 Text(
-                    "Основной поиск использует DuckDuckGo и Mojeek. При нехватке результатов добавляются Wikipedia и Google News RSS. RSS Google News не является документированным API и предназначен для личного некоммерческого использования; доступность и условия могут измениться. Brave Search подключается отдельно по желанию.",
+                    "Основной источник — Mwmbl Search API с собственным поисковым индексом и структурированными JSON-результатами. Без ключа действует анонимный лимит сервиса; личный ключ привязывает запросы к твоему аккаунту. Если Mwmbl вернёт мало результатов или будет недоступен, приложение попробует резервные источники.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = mwmblKey,
+                    onValueChange = { mwmblKey = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Личный Mwmbl API key (необязательно)") },
+                    singleLine = true,
+                    visualTransformation = if (mwmblKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { mwmblKeyVisible = !mwmblKeyVisible }) {
+                            Text(if (mwmblKeyVisible) "Скрыть" else "Показать")
+                        }
+                    }
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Button(
+                        onClick = {
+                            manager.setToolCredential("mwmbl_search", mwmblKey)
+                            savedNotice = if (mwmblKey.isBlank()) "Личный ключ Mwmbl удалён" else "Личный ключ Mwmbl сохранён"
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Сохранить ключ Mwmbl") }
+                    OutlinedButton(
+                        onClick = {
+                            mwmblKey = ""
+                            manager.setToolCredential("mwmbl_search", "")
+                            savedNotice = "Личный ключ Mwmbl удалён"
+                        }
+                    ) { Text("Удалить") }
+                }
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                Text(
+                    "Дополнительный Brave Search можно оставить как ещё один резервный источник.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
