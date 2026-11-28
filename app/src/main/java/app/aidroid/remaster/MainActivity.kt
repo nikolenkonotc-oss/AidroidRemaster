@@ -1626,6 +1626,7 @@ private fun ConversationScreen(
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
     val activeAgentChatIds by agentRunner.activeChatIds.collectAsState()
+    val agentToolProgress by agentRunner.toolProgress.collectAsState()
 
     fun showNotice(message: String) {
         scope.launch {
@@ -2055,6 +2056,32 @@ private fun ConversationScreen(
                                 }
                             }
                         }
+                        item(key = "agent-tool-progress") {
+                            val progressText = agentToolProgress[chat.id]
+                            AnimatedVisibility(
+                                visible = !progressText.isNullOrBlank(),
+                                enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+                                exit = fadeOut(tween(140)) + shrinkVertically(tween(140))
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 5.dp, top = 2.dp, bottom = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        Modifier.size(12.dp),
+                                        strokeWidth = 1.6.dp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+                                    )
+                                    Text(
+                                        progressText.orEmpty(),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     androidx.compose.animation.Crossfade(
@@ -2228,9 +2255,10 @@ private fun ConversationScreen(
                     ) {
                         CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
                         Text(
-                            if (pendingAgentRequests == 1 || chat.id in activeAgentChatIds) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
-                            color = MaterialTheme.colorScheme.secondary,
-                            style = MaterialTheme.typography.labelMedium
+                            agentToolProgress[chat.id] ?: if (pendingAgentRequests == 1 || chat.id in activeAgentChatIds) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     }
                 }
