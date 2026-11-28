@@ -1,14 +1,7 @@
 package app.aidroid.remaster.ai
 
 import okhttp3.Dns
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.contentOrNull
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.IDN
@@ -17,7 +10,6 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.net.UnknownHostException
-import java.nio.charset.Charset
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -38,22 +30,10 @@ data class WebPageContent(
 )
 
 /**
- * Keyless web search and page extraction.
- *
- * Search uses public HTML result pages, not paid APIs. Those pages are not stable APIs and
- * may throttle automated requests, so providers are tried independently and failures are
- * reported instead of fabricating results.
+ * Safe web-page reader. Search is performed only through configured structured APIs
+ * (Tavily, with optional Brave fallback) in AgentToolExecutor.
  */
 class WebResearchEngine {
-    private val searchClient = OkHttpClient.Builder()
-        .dns(PublicOnlyDns)
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(7, TimeUnit.SECONDS)
-        .callTimeout(9, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
-
     private val pageClient = OkHttpClient.Builder()
         .dns(PublicOnlyDns)
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -137,7 +117,6 @@ class WebResearchEngine {
     companion object {
         private const val MAX_REDIRECTS = 4
         private const val MAX_PAGE_BYTES = 1_500_000L
-        private const val MAX_SEARCH_BYTES = 1_000_000L
         private const val MAX_EXTRACTED_TEXT_CHARS = 18_000
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36 AidroidRemaster/1.0"
@@ -343,17 +322,17 @@ private fun isPublicAddress(address: InetAddress): Boolean {
 
 internal object WebHtmlParser {
     fun extractPage(html: String): Pair<String, String> {
-        val title = Regex("""(?is)<title\\b[^>]*>(.*?)</title>""")
+        val title = Regex("""(?is)<title\b[^>]*>(.*?)</title>""")
             .find(html)?.groupValues?.get(1)?.let(::stripHtml).orEmpty().take(300)
 
         val source = listOf("article", "main", "body").firstNotNullOfOrNull { tag ->
-            Regex("""(?is)<${tag}\\b[^>]*>(.*?)</${tag}\\s*>""").find(html)?.groupValues?.get(1)
+            Regex("""(?is)<\${tag}\b[^>]*>(.*?)</\${tag}\s*>""").find(html)?.groupValues?.get(1)
         } ?: html
         return title to stripHtml(source)
     }
 
     fun extractDescription(html: String): String {
-        val metas = Regex("""(?is)<meta\\b([^>]*)>""").findAll(html)
+        val metas = Regex("""(?is)<meta\b([^>]*)>""").findAll(html)
         val match = metas.firstOrNull {
             val attrs = it.groupValues[1]
             attribute(attrs, "name").equals("description", ignoreCase = true) ||
@@ -363,12 +342,12 @@ internal object WebHtmlParser {
     }
 
     fun normalizePlainText(input: String): String =
-        input.replace("\\u0000", "").replace(Regex("""[ \\t]{2,}"""), " ")
-            .replace(Regex("""\\s+([,.;:!?])"""), "$1")
-            .replace(Regex("""\\n{3,}"""), "\\n\\n").trim()
+        input.replace("\u0000", "").replace(Regex("""[ \t]{2,}"""), " ")
+            .replace(Regex("""\s+([,.;:!?])"""), "$1")
+            .replace(Regex("""\n{3,}"""), "\n\n").trim()
 
     private fun attribute(attributes: String, name: String): String? {
-        val pattern = Regex("""(?is)\\b${Regex.escape(name)}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))""")
+        val pattern = Regex("""(?is)\b\${Regex.escape(name)}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
         val match = pattern.find(attributes) ?: return null
         return (1..3).firstNotNullOfOrNull { match.groups[it]?.value }?.let(::decodeHtml)
     }
@@ -376,22 +355,22 @@ internal object WebHtmlParser {
     private fun stripHtml(input: String): String {
         var source = input
         source = Regex("""(?is)<!--.*?-->""").replace(source, " ")
-        source = Regex("""(?is)<(script|style|noscript|template|svg|iframe|nav|footer|header|aside|form|button)\\b[^>]*>.*?</\\1\\s*>""")
+        source = Regex("""(?is)<(script|style|noscript|template|svg|iframe|nav|footer|header|aside|form|button)\b[^>]*>.*?</\1\s*>""")
             .replace(source, " ")
-        source = Regex("""(?i)<br\\s*/?>|</(p|div|section|article|main|h[1-6]|li|tr|blockquote)>""")
-            .replace(source, "\\n")
-        source = Regex("""(?i)<li\\b[^>]*>""").replace(source, "• ")
+        source = Regex("""(?i)<br\s*/?>|</(p|div|section|article|main|h[1-6]|li|tr|blockquote)>""")
+            .replace(source, "\n")
+        source = Regex("""(?i)<li\b[^>]*>""").replace(source, "• ")
         source = Regex("""(?is)<[^>]+>""").replace(source, " ")
         return normalizePlainText(decodeHtml(source))
     }
 
     private fun decodeHtml(input: String): String {
         val named = mapOf(
-            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\\\"",
+            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"",
             "apos" to "'", "nbsp" to " ", "ndash" to "–", "mdash" to "—",
             "hellip" to "…", "copy" to "©", "reg" to "®"
         )
-        return Regex("""&(#x[0-9a-fA-F]+|#\\d+|[a-zA-Z]+);""").replace(input) { match ->
+        return Regex("""&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);""").replace(input) { match ->
             val entity = match.groupValues[1]
             when {
                 entity.startsWith("#x", true) -> runCatching {
