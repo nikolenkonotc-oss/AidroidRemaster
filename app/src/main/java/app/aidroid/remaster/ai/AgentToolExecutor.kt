@@ -95,42 +95,46 @@ class AgentToolExecutor(
             it in setOf("any", "day", "week", "month", "year")
         } ?: "any"
 
-        val freeAttempt = runCatching { webResearch.search(query, freshness, providers.toolCredential("mwmbl_search")) }
-        val freeResults = freeAttempt.getOrNull().orEmpty()
-        val optionalKey = providers.toolCredential("brave_search")
-        // A handful of scraped results is not enough for a broad/current query.
-        // Query the independent API when available and merge, rather than replacing,
-        // whatever the free engines managed to return.
-        val braveAttempt = if (freeResults.size < 5 && !optionalKey.isNullOrBlank()) {
-            runCatching { searchBrave(query, freshness, optionalKey) }
+        val tavilyKey = providers.toolCredential("tavily_search").orEmpty().trim()
+        val braveKey = providers.toolCredential("brave_search").orEmpty().trim()
+
+        val tavilyAttempt = if (tavilyKey.isNotBlank()) {
+            runCatching { searchTavily(query, freshness, tavilyKey) }
         } else null
-        val braveResults = braveAttempt?.getOrNull().orEmpty()
-        val results = (freeResults + braveResults).distinctBy { it.url }.take(8)
+        val tavilyResults = tavilyAttempt?.getOrNull().orEmpty()
+
+        // Brave is a deliberate user-configured fallback, not another scraper.
+        // Never mix two providers' rankings: use Brave only if Tavily is unavailable.
+        val useBrave = tavilyResults.isEmpty() && braveKey.isNotBlank()
+        val braveAttempt = if (useBrave) runCatching { searchBrave(query, freshness, braveKey) } else null
+        val results = if (tavilyResults.isNotEmpty()) tavilyResults else braveAttempt?.getOrNull().orEmpty()
 
         if (results.isEmpty()) {
-            val freeError = freeAttempt.exceptionOrNull()?.message
+            val tavilyError = tavilyAttempt?.exceptionOrNull()?.message
+                ?: if (tavilyKey.isBlank()) "Добавь личный Tavily API key в настройках агента." else null
             val braveError = braveAttempt?.exceptionOrNull()?.message
+                ?: if (braveKey.isBlank()) "Brave API key не добавлен." else null
             throw IllegalStateException(
-                listOfNotNull(freeError, braveError).joinToString(" · ")
-                    .ifBlank { "Поисковые источники не вернули результатов. Попробуй изменить запрос." }
+                listOfNotNull(tavilyError, braveError).joinToString(" · ")
+                    .ifBlank { "Поисковые API не вернули результатов. Проверь ключи и лимиты." }
             )
         }
 
         val sourceNames = results.map { it.source }.filter { it.isNotBlank() }.distinct()
         val summary = buildString {
-            append("Результаты веб-поиска по запросу: ").append(query).append("\n")
-            append("Источники: ").append(sourceNames.ifEmpty { listOf("внешний поиск") }.joinToString(", ")).append("\n")
-            if (braveAttempt?.isFailure == true) {
-                append("Резервный Brave Search не сработал: ")
-                    .append(braveAttempt.exceptionOrNull()?.message?.take(350).orEmpty()).append("\n")
+            append("Результаты веб-поиска по запросу: ").append(query).append("\\n")
+            append("Источник: ").append(sourceNames.joinToString(", ")).append("\\n")
+            if (useBrave && tavilyAttempt?.isFailure == true) {
+                append("Tavily недоступен, использован Brave: ")
+                    .append(tavilyAttempt.exceptionOrNull()?.message?.take(250).orEmpty()).append("\\n")
             }
-            append("\n")
+            append("\\n")
             results.forEachIndexed { index, item ->
-                append(index + 1).append(". ").append(item.title).append("\n")
-                append(item.url).append("\n")
-                if (item.publishedAt.isNotBlank()) append("Дата публикации или возраст источника: ").append(item.publishedAt).append("\n")
-                if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\n")
-                append("\n")
+                append(index + 1).append(". ").append(item.title).append("\\n")
+                append(item.url).append("\\n")
+                if (item.publishedAt.isNotBlank()) append("Дата публикации: ").append(item.publishedAt).append("\\n")
+                if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\\n")
+                append("\\n")
             }
             append("Открывай подходящие ссылки инструментом web_open и проверяй первоисточники. ")
             append("Используй только фактически полученные сведения; добавляй Markdown-ссылки на источники. ")
@@ -139,12 +143,39 @@ class AgentToolExecutor(
         AgentToolResult(summary.take(MAX_TOOL_RESULT_CHARS))
     }
 
+    private fun searchTavily(query: String, freshness: String, key: String): List<WebSearchHit> {
+        val payload = buildJsonObject {
+            put("query", query)
+            put("search_depth", "basic")
+            put("max_results", 8)
+            put("topic", if (freshness == "any") "general" else "news")
+            put("include_answer", false)
+            put("include_raw_content", false)
+            put("include_published_date", true)
+            put("safe_search", true)
+            when (freshness) {
+                "day" -> put("time_range", "day")
+                "week" -> put("time_range", "week")
+                "month" -> put("time_range", "month")
+                "year" -> put("time_range", "year")
+            }
+        }
+        val response = postJson(
+            "https://api.tavily.com/search",
+            payload,
+            mapOf("Authorization" to "Bearer $key")
+        )
+        return WebSearchApiParser.parseTavily(response)
+    }
+
     private fun searchBrave(query: String, freshness: String, key: String): List<WebSearchHit> {
         val queryString = buildString {
             append("q=").append(encode(query))
-            append("&count=6&search_lang=")
+            append("&count=8&search_lang=")
             append(encode(java.util.Locale.getDefault().language.ifBlank { "en" }))
             append("&safesearch=strict")
+            val country = java.util.Locale.getDefault().country
+            if (country.matches(Regex("[A-Za-z]{2}"))) append("&country=").append(country.uppercase())
             when (freshness) {
                 "day" -> append("&freshness=pd")
                 "week" -> append("&freshness=pw")
@@ -158,16 +189,7 @@ class AgentToolExecutor(
             .header("X-Subscription-Token", key)
             .get()
             .build()
-        val response = executeJson(request)
-        return response["web"]?.jsonObject?.get("results")?.jsonArray.orEmpty().mapNotNull { item ->
-            val row = item.jsonObject
-            val title = row["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val url = row["url"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val snippet = row["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val age = row["age"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) null
-            else WebSearchHit(title.take(300), url, snippet.take(900), "Brave Search", age.take(100))
-        }.take(8)
+        return WebSearchApiParser.parseBrave(executeJson(request))
     }
 
     private suspend fun openWebPage(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
