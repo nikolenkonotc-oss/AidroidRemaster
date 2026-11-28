@@ -570,7 +570,7 @@ private fun AgentActionApprovalDialog(
                         Text(explanation)
                     }
                     AgentActionType.FILE_OPERATION -> {
-                        Text("Операция ограничена выбранными тобой папками. Перезапись существующих файлов, рекурсивное удаление папок и выход за выбранный корень запрещены.")
+                        Text("Операция ограничена разрешённой файловой областью. Перезапись существующих файлов, рекурсивное удаление папок и выход за корень накопителя или выбранной папки запрещены.")
                         Text(
                             action.body,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -579,7 +579,13 @@ private fun AgentActionApprovalDialog(
                         )
                     }
                     AgentActionType.TERMUX_COMMAND -> {
-                        Text("Команда будет отправлена в Termux без root-доступа. Запускается только одна команда из ограниченного списка; shell-скрипты, перенаправления и опасные системные команды заблокированы.")
+                        val rootExplanation = when (action.subject) {
+                            "root_list" -> "Aidroid попросит root-менеджер показать список файлов только в разрешённой конфигурационной папке."
+                            "root_read" -> "Aidroid передаст Termux ограниченный запрос на чтение выбранного системного конфигурационного файла через su. После подтверждения Aidroid root-менеджер может показать отдельный запрос."
+                            "root_write" -> "Aidroid создаст резервную копию и передаст Termux ограниченную операцию записи конфигурационного файла через su. Нужны это подтверждение и разрешение root-менеджера."
+                            else -> "Обычная команда выполнится в Termux без root. Только команды изменения состояния требуют отдельного подтверждения; безопасные read-only команды могут запускаться автоматически по переключателю настроек."
+                        }
+                        Text(rootExplanation)
                         SelectionContainer {
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),

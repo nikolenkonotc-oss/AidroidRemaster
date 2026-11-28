@@ -57,7 +57,7 @@ class AgentToolExecutor(
             addAll(BuiltInTools.definitions(enabled))
             addAll(AndroidControlTools.definitions(enabled))
             addAll(AndroidFileTools.definitions(enabled, preferences.androidFileRoots.size))
-            addAll(TermuxCommandTools.definitions(enabled))
+            addAll(TermuxCommandTools.definitions(enabled, rootAccessEnabled = "termux_root_access" in enabled))
             if ("web_search" in enabled) {
                 add(webSearchTool())
                 add(webOpenTool())
@@ -88,7 +88,16 @@ class AgentToolExecutor(
                 withContext(Dispatchers.IO) { AndroidFileTools.executeRead(appContext, providers.agentPreferences().androidFileRoots, name, arguments) }
             "android_file_create_folder", "android_file_copy", "android_file_move", "android_file_delete" ->
                 AndroidFileTools.prepare(name, arguments, chatId)
-            "termux_run_command" -> TermuxCommandTools.prepare(arguments, chatId)
+            "termux_run_command" -> {
+                val command = arguments.string("command")
+                if ("termux_auto_safe" in providers.agentPreferences().enabledTools &&
+                    TermuxCommandTools.isReadOnlyCommand(command)
+                ) TermuxCommandTools.executeCommand(appContext, command)
+                else TermuxCommandTools.prepare(arguments, chatId)
+            }
+            "termux_root_list_config" -> TermuxCommandTools.prepareRootList(arguments, chatId)
+            "termux_root_read_config" -> TermuxCommandTools.prepareRootRead(arguments, chatId)
+            "termux_root_write_config" -> TermuxCommandTools.prepareRootWrite(arguments, chatId)
             "web_search" -> searchWeb(arguments)
             "web_open" -> openWebPage(arguments)
             "generate_image" -> generateImage(arguments)

@@ -46,7 +46,8 @@ data class AgentPreferences(
         "image_generation",
         "code_execution",
         "voice_input",
-        "voice_output"
+        "voice_output",
+        "termux_auto_safe"
     ),
     val systemPrompt: String = "",
     val codeRunnerUrl: String = "",

@@ -102,9 +102,21 @@ class ProviderManager(context: Context) {
                 preferences.getString(KEY_AGENT_PREFERENCES, "{}") ?: "{}"
             )
         }.getOrDefault(AgentPreferences(activeProviderId = activeProviderId()))
-        return stored.copy(
-            enabledTools = stored.enabledTools.filterNot { it == "email_draft" || it == "calendar_event" }
+        val normalized = stored.copy(
+            enabledTools = stored.enabledTools
+                .filterNot { it == "email_draft" || it == "calendar_event" }
         )
+        if (!preferences.getBoolean(KEY_TERMUX_SAFE_MIGRATED, false)) {
+            val migrated = normalized.copy(
+                enabledTools = (normalized.enabledTools + "termux_auto_safe").distinct()
+            )
+            preferences.edit()
+                .putString(KEY_AGENT_PREFERENCES, json.encodeToString(migrated))
+                .putBoolean(KEY_TERMUX_SAFE_MIGRATED, true)
+                .apply()
+            return migrated
+        }
+        return normalized
     }
 
     fun saveAgentPreferences(value: AgentPreferences) {
@@ -135,5 +147,6 @@ class ProviderManager(context: Context) {
         const val KEY_PROVIDERS = "providers_v1"
         const val KEY_ACTIVE_PROVIDER = "active_provider"
         const val KEY_AGENT_PREFERENCES = "agent_preferences_v1"
+        const val KEY_TERMUX_SAFE_MIGRATED = "termux_safe_migrated_v1"
     }
 }

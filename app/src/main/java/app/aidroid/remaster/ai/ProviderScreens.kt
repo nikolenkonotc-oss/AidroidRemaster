@@ -341,6 +341,23 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var imageEditModel by remember { mutableStateOf(preferences.imageEditModel) }
     var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
     var endpointError by remember { mutableStateOf<String?>(null) }
+    var allFilesAccess by remember { mutableStateOf(android.os.Environment.isExternalStorageManager()) }
+
+    val allFilesAccessLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) {
+        allFilesAccess = android.os.Environment.isExternalStorageManager()
+        if (allFilesAccess) {
+            val current = manager.agentPreferences()
+            manager.saveAgentPreferences(
+                current.copy(androidFileRoots = (current.androidFileRoots + AndroidFileTools.ALL_FILES_ROOT).distinct())
+            )
+            preferences = manager.agentPreferences()
+            savedNotice = "Доступ ко всему общему накопителю включён"
+        } else {
+            savedNotice = "Разрешение на доступ ко всем файлам не выдано"
+        }
+    }
 
     val fileTreePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
@@ -548,7 +565,34 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("android_file_access", it) }
                 )
                 Text(
-                    "Выбрано корневых папок: ${preferences.androidFileRoots.size}. Агент видит только папки, которые ты явно выбрал через системный экран Android.",
+                    "Доступ ко всему общему накопителю: ${if (allFilesAccess && AndroidFileTools.ALL_FILES_ROOT in preferences.androidFileRoots) "включён" else "не подключён"}. Отдельно выбрано папок: ${preferences.androidFileRoots.count { it != AndroidFileTools.ALL_FILES_ROOT }}.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(
+                    onClick = {
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            android.net.Uri.parse("package:${context.packageName}")
+                        )
+                        runCatching { allFilesAccessLauncher.launch(intent) }
+                            .onFailure {
+                                val fallback = android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                                )
+                                runCatching { allFilesAccessLauncher.launch(fallback) }
+                                    .onFailure { error ->
+                                        savedNotice = "Не удалось открыть настройку доступа: ${error.message}"
+                                    }
+                            }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Text(if (allFilesAccess) "Настроить доступ ко всем файлам" else "Разрешить доступ ко всем файлам")
+                }
+                Text(
+                    "Разрешение открывает общий накопитель /storage/emulated/0. Android по-прежнему ограничивает Android/data, Android/obb, личные данные других приложений и системные разделы. Для дополнительных пользовательских папок оставлен SAF-пикер.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -562,7 +606,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                 if (preferences.androidFileRoots.isNotEmpty()) {
                     TextButton(
                         onClick = {
-                            preferences.androidFileRoots.forEach { raw ->
+                            preferences.androidFileRoots.filterNot { it == AndroidFileTools.ALL_FILES_ROOT }.forEach { raw ->
                                 runCatching {
                                     context.contentResolver.releasePersistableUriPermission(
                                         android.net.Uri.parse(raw),
@@ -572,21 +616,39 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                                 }
                             }
                             update(preferences.copy(androidFileRoots = emptyList()))
+                            allFilesAccess = android.os.Environment.isExternalStorageManager()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Отозвать доступ ко всем папкам", color = MaterialTheme.colorScheme.error)
+                        Text("Убрать все подключения файловых папок", color = MaterialTheme.colorScheme.error)
                     }
+                    Text(
+                        "Кнопка отключает выбранные файловые области в Aidroid. Чтобы полностью отозвать специальное разрешение Android, выключи его на странице «Доступ ко всем файлам» выше.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
                     title = "Команды через Termux",
-                    description = "Запуск разрешённых диагностических команд в Termux с отдельным подтверждением каждой команды",
+                    description = "Запуск разрешённых команд в Termux с возвратом результата прямо в чат",
                     checked = "termux_command" in preferences.enabledTools,
                     onChecked = { toggleTool("termux_command", it) }
                 )
+                ToolPreferenceRow(
+                    title = "Автозапуск безопасных команд",
+                    description = "Разрешённые диагностические команды без изменения данных запускаются без отдельного подтверждения",
+                    checked = "termux_auto_safe" in preferences.enabledTools,
+                    onChecked = { toggleTool("termux_auto_safe", it) }
+                )
+                ToolPreferenceRow(
+                    title = "Root-доступ к конфигурациям",
+                    description = "Чтение и точечное изменение выбранных системных конфигов; каждая операция требует подтверждения",
+                    checked = "termux_root_access" in preferences.enabledTools,
+                    onChecked = { toggleTool("termux_root_access", it) }
+                )
                 Text(
-                    "Нужен установленный Termux. В его файле ~/.termux/termux.properties включи allow-external-apps=true и выдай Aidroid разрешение RUN_COMMAND. Команды запускаются без root; произвольные shell-скрипты и опасные системные команды заблокированы.",
+                    "Нужен установленный Termux. В ~/.termux/termux.properties включи allow-external-apps=true и выдай Aidroid разрешение RUN_COMMAND. Вывод команд приходит в чат. Root-инструменты доступны только если на устройстве уже настроен su и root-менеджер; изменения ограничены отдельными конфигурационными файлами, создаётся резервная копия. Произвольный root-shell не предоставляется.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -748,7 +810,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Постоянное разрешение отключено по умолчанию. Оно распространяется только на обычные действия Android. Операции с файлами и команды Termux всегда требуют отдельного подтверждения. Системные и разрушительные операции остаются ограниченными.",
+                    "Постоянное разрешение Android не отменяет подтверждение записи и удаления файлов. Безопасные read-only команды Termux могут запускаться автоматически по отдельному переключателю; команды изменения состояния и root-операции всегда требуют подтверждения.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
