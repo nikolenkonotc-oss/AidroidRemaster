@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -143,7 +144,7 @@ object TermuxCommandTools {
         ensureTermuxInstalled(context)
         val result = executeTermux(
             context = context,
-            arguments = listOf("-lc", clean)
+            arguments = listOf("-c", clean)
         )
         return result.asToolResult(clean)
     }
@@ -280,10 +281,27 @@ object TermuxCommandTools {
     }
 
     private fun ensureTermuxInstalled(context: Context) {
-        try {
+        val info = try {
             context.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
         } catch (_: Exception) {
-            throw IllegalStateException("Termux не установлен. Установи Termux и повтори запрос.")
+            throw IllegalStateException("Termux не установлен или Android не видит пакет com.termux.")
+        }
+
+        if (context.checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+            throw IllegalStateException(
+                "У Aidroid нет разрешения RUN_COMMAND. Открой Android → Приложения → Aidroid → Разрешения → Дополнительные разрешения → «Запуск команд в Termux»."
+            )
+        }
+
+        val version = Regex("""^(\\d+)\\.(\\d+)(?:\\.(\\d+))?""")
+            .find(info.versionName.orEmpty())
+            ?.groupValues
+            ?.drop(1)
+            ?.mapNotNull { it.toIntOrNull() }
+        if (version == null || version[0] == 0 && (version.getOrElse(1) { 0 } < 109)) {
+            throw IllegalStateException(
+                "Нужен Termux версии 0.109 или новее для возврата результата команды. Обнови Termux и повтори запрос."
+            )
         }
     }
 
@@ -308,7 +326,10 @@ object TermuxCommandTools {
             putExtra("com.termux.RUN_COMMAND_PATH", TERMUX_BASH)
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arguments.toTypedArray())
             putExtra("com.termux.RUN_COMMAND_WORKDIR", TERMUX_HOME)
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            // Use the current explicit AppShell runner instead of the deprecated
+            // RUN_COMMAND_BACKGROUND compatibility flag.
+            putExtra("com.termux.RUN_COMMAND_RUNNER", "app-shell")
+            putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", "Aidroid Remaster")
             putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", callback)
         }
         try {
@@ -348,7 +369,7 @@ object TermuxCommandTools {
         }
     }
 
-    private const val TERMUX_COMMAND_TIMEOUT_MS = 15_000L
+    private const val TERMUX_COMMAND_TIMEOUT_MS = 30_000L
     private const val ROOT_COMMAND_TIMEOUT_SECONDS = 30L
 
     private fun uniqueExecutionId(): Int {
