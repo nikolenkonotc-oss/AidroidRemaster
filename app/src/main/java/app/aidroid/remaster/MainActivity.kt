@@ -561,7 +561,7 @@ private fun AgentActionApprovalDialog(
                     }
                     AgentActionType.ANDROID_CONTROL -> {
                         val explanation = when (action.subject) {
-                            "open_settings" -> "Aidroid откроет системный раздел «${action.body}». Изменения параметров ты выполняешь самостоятельно в Android."
+                            "open_settings" -> "Aidroid откроет выбранный системный раздел настроек Android. Дальнейшие изменения параметров ты выполняешь самостоятельно."
                             "set_media_volume" -> "Aidroid установит громкость мультимедиа примерно на ${action.body}%. Звонки и будильники не затрагиваются."
                             else -> "Aidroid выполнит локальное действие на устройстве."
                         }
