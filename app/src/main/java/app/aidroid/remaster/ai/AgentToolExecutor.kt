@@ -85,7 +85,7 @@ class AgentToolExecutor(
             "android_set_media_volume", "android_set_display_parameter" ->
                 AndroidControlTools.prepare(name, arguments, chatId)
             "android_file_list", "android_file_read" ->
-                AndroidFileTools.executeRead(appContext, providers.agentPreferences().androidFileRoots, name, arguments)
+                withContext(Dispatchers.IO) { AndroidFileTools.executeRead(appContext, providers.agentPreferences().androidFileRoots, name, arguments) }
             "android_file_create_folder", "android_file_copy", "android_file_move", "android_file_delete" ->
                 AndroidFileTools.prepare(name, arguments, chatId)
             "termux_run_command" -> TermuxCommandTools.prepare(arguments, chatId)
@@ -102,7 +102,7 @@ class AgentToolExecutor(
         when (action.type) {
             AgentActionType.CODE_EXECUTION -> executeCode(action)
             AgentActionType.ANDROID_CONTROL -> AndroidControlTools.execute(appContext, action)
-            AgentActionType.FILE_OPERATION -> AndroidFileTools.execute(appContext, action, providers.agentPreferences().androidFileRoots)
+            AgentActionType.FILE_OPERATION -> withContext(Dispatchers.IO) { AndroidFileTools.execute(appContext, action, providers.agentPreferences().androidFileRoots) }
             AgentActionType.TERMUX_COMMAND -> TermuxCommandTools.execute(appContext, action)
         }
 
