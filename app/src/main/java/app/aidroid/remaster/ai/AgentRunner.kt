@@ -60,6 +60,9 @@ class AgentRunner(
             }
         }
 
+    suspend fun searchWeb(query: String, freshness: String = "any"): List<WebSearchHit> =
+        toolExecutor.searchForUi(query, freshness)
+
     fun isToolEnabled(toolId: String): Boolean = toolId in providers.agentPreferences().enabledTools
 
     fun resolveAction(actionId: String, approved: Boolean) {
