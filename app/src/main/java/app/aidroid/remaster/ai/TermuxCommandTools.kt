@@ -12,6 +12,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import java.io.ByteArrayOutputStream
 import java.util.UUID
@@ -27,7 +33,39 @@ import java.util.concurrent.TimeUnit
  * requires an in-app confirmation; destructive partition operations are blocked.
  */
 object TermuxCommandTools {
+    const val RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND"
+
     private const val TERMUX_PACKAGE = "com.termux"
+    private const val RUN_COMMAND_PERMISSION_TIMEOUT_MS = 120_000L
+
+    private val permissionRequestMutex = Mutex()
+    private val _permissionRequest = MutableStateFlow<CompletableDeferred<Boolean>?>(null)
+    val permissionRequest: StateFlow<CompletableDeferred<Boolean>?> = _permissionRequest.asStateFlow()
+
+    /**
+     * The RUN_COMMAND permission is defined by Termux as a dangerous permission.
+     * Ask the foreground Activity to show the system permission dialog and suspend
+     * the command until the user decides. No Termux command is sent before approval.
+     */
+    private suspend fun requestRunCommandPermission(context: Context): Boolean =
+        permissionRequestMutex.withLock {
+            if (context.checkSelfPermission(RUN_COMMAND_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
+                true
+            } else {
+                val decision = CompletableDeferred<Boolean>()
+                _permissionRequest.value = decision
+                try {
+                    withTimeout(RUN_COMMAND_PERMISSION_TIMEOUT_MS) { decision.await() }
+                } catch (error: TimeoutCancellationException) {
+                    throw IllegalStateException(
+                        "Не удалось получить ответ на системный запрос RUN_COMMAND. Команда в Termux не запускалась; повтори запрос, пока Aidroid открыт.",
+                        error
+                    )
+                } finally {
+                    if (_permissionRequest.value === decision) _permissionRequest.value = null
+                }
+            }
+        }
     private const val TERMUX_SERVICE = "com.termux.app.RunCommandService"
     private const val TERMUX_PREFIX = "/data/data/com.termux/files/usr/bin/"
     private const val TERMUX_BASH = TERMUX_PREFIX + "bash"
@@ -280,17 +318,11 @@ object TermuxCommandTools {
         return tokens
     }
 
-    private fun ensureTermuxInstalled(context: Context) {
+    private suspend fun ensureTermuxInstalled(context: Context) {
         val info = try {
             context.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
         } catch (_: Exception) {
             throw IllegalStateException("Termux не установлен или Android не видит пакет com.termux.")
-        }
-
-        if (context.checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-            throw IllegalStateException(
-                "У Aidroid нет разрешения RUN_COMMAND. Открой Android → Приложения → Aidroid → Разрешения → Дополнительные разрешения → «Запуск команд в Termux»."
-            )
         }
 
         val version = Regex("""^(\d+)\.(\d+)(?:\.(\d+))?""")
@@ -302,6 +334,28 @@ object TermuxCommandTools {
             throw IllegalStateException(
                 "Нужен Termux версии 0.109 или новее для возврата результата команды. Обнови Termux и повтори запрос."
             )
+        }
+
+        // Verify that the installed Termux build actually declares the custom
+        // permission before asking Android to grant it to Aidroid.
+        val permissionOwner = runCatching {
+            context.packageManager.getPermissionInfo(RUN_COMMAND_PERMISSION, 0).packageName
+        }.getOrNull()
+        if (permissionOwner != TERMUX_PACKAGE) {
+            throw IllegalStateException(
+                "Установленная сборка Termux не публикует разрешение RUN_COMMAND. Команда не запускалась; проверь, что установлен Termux с поддержкой RUN_COMMAND."
+            )
+        }
+
+        if (context.checkSelfPermission(RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            val granted = requestRunCommandPermission(context)
+            if (!granted ||
+                context.checkSelfPermission(RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED
+            ) {
+                throw IllegalStateException(
+                    "Разрешение RUN_COMMAND не выдано. Команда не запускалась. Разреши Aidroid запуск команд в Termux в системном запросе Android и повтори команду."
+                )
+            }
         }
     }
 
