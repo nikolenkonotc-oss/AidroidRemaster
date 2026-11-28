@@ -56,8 +56,8 @@ class AgentToolExecutor(
         return buildList {
             addAll(BuiltInTools.definitions(enabled))
             addAll(AndroidControlTools.definitions(enabled))
-            addAll(AndroidFileTools.definitions(enabled, preferences.androidFileRoots.size))
-            addAll(TermuxCommandTools.definitions(enabled, rootAccessEnabled = "termux_root_access" in enabled))
+            addAll(AndroidFileTools.definitions(enabled, preferences.androidFileRoots))
+            addAll(TermuxCommandTools.definitions(enabled))
             if ("web_search" in enabled) {
                 add(webSearchTool())
                 add(webOpenTool())
@@ -95,9 +95,6 @@ class AgentToolExecutor(
                 ) TermuxCommandTools.executeCommand(appContext, command)
                 else TermuxCommandTools.prepare(arguments, chatId)
             }
-            "termux_root_list_config" -> TermuxCommandTools.prepareRootList(arguments, chatId)
-            "termux_root_read_config" -> TermuxCommandTools.prepareRootRead(arguments, chatId)
-            "termux_root_write_config" -> TermuxCommandTools.prepareRootWrite(arguments, chatId)
             "web_search" -> searchWeb(arguments)
             "web_open" -> openWebPage(arguments)
             "generate_image" -> generateImage(arguments)

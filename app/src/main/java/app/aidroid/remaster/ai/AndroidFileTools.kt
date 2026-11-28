@@ -12,9 +12,8 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 /**
- * User-scoped filesystem access through Android's Storage Access Framework.
- * All paths are relative to one of the directory trees explicitly selected by the user.
- * Mutations are represented as FILE_OPERATION actions and always require confirmation.
+ * Shared-storage access uses MANAGE_EXTERNAL_STORAGE (root index 0). SAF trees are optional
+ * additional roots. Mutations are represented as FILE_OPERATION actions and require approval.
  */
 object AndroidFileTools {
     const val ALL_FILES_ROOT = "aidroid://all-files"
@@ -22,71 +21,81 @@ object AndroidFileTools {
     private const val MAX_TEXT_BYTES = 64 * 1024
     private const val MAX_COPY_BYTES = 512L * 1024L * 1024L
 
-    fun definitions(enabled: Set<String>, rootsCount: Int): List<LlmTool> {
+    fun effectiveRoots(storedRoots: List<String>): List<String> = buildList {
+        // Keep index 0 stable even if the user later revokes the special permission.
+        // A pending confirmation must never silently target a different SAF folder.
+        add(ALL_FILES_ROOT)
+        addAll(storedRoots.filterNot { it == ALL_FILES_ROOT }.distinct())
+    }
+
+    fun definitions(enabled: Set<String>, storedRoots: List<String>): List<LlmTool> {
         if ("android_file_access" !in enabled) return emptyList()
-        val rootDescription = if (rootsCount == 0) {
-            "Пользователь ещё не выбрал папку в настройках агента."
-        } else {
-            "Доступно корневых папок: $rootsCount. Индексы начинаются с 0."
+        val roots = effectiveRoots(storedRoots)
+        val rootDescription = when {
+            Environment.isExternalStorageManager() ->
+                "Весь общий накопитель /storage/emulated/0 доступен автоматически как root_index=0. Дополнительные SAF-папки идут после него."
+            roots.size > 1 ->
+                "root_index=0 зарезервирован для общего накопителя, но Android-разрешение на него ещё не выдано. Дополнительные SAF-папки начинаются с root_index=1."
+            else ->
+                "Доступ к общему накопителю ещё не выдан. Включи системное разрешение Android «Доступ ко всем файлам»; выбирать SAF-папку не требуется. SAF-папки можно добавить дополнительно."
         }
         return listOf(
             LlmTool(
                 name = "android_file_list",
-                description = "Просматривает содержимое выбранной пользователем папки и её подпапок. path — относительный путь внутри root_index, пустая строка означает корень. $rootDescription",
+                description = "Просматривает содержимое общего накопителя или дополнительной папки. root_index=0 — весь /storage/emulated/0 после выдачи Android «Доступ ко всем файлам»; SAF-папки — только дополнительные корни. path — относительный путь внутри root_index, пустая строка означает корень. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "path" to stringSchema("Относительный путь папки внутри выбранного корня."),
-                    required = listOf("root_index")
-                )
+                        )
             ),
             LlmTool(
                 name = "android_file_read",
-                description = "Читает небольшой текстовый файл (до 64 КБ) из выбранной пользователем папки. Не использовать для чтения секретов без прямой просьбы пользователя. $rootDescription",
+                description = "Читает небольшой текстовый файл (до 64 КБ) из общего накопителя при root_index=0 либо из дополнительной SAF-папки. Не использовать для чтения секретов без прямой просьбы пользователя. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "path" to stringSchema("Относительный путь текстового файла."),
-                    required = listOf("root_index", "path")
+                    required = listOf("path")
                 )
             ),
             LlmTool(
                 name = "android_file_create_folder",
-                description = "Создаёт одну новую папку внутри выбранного пользователем корня. Изменение требует отдельного подтверждения. $rootDescription",
+                description = "Создаёт одну новую папку в общем накопителе (root_index=0) или дополнительной SAF-папке. Изменение требует отдельного подтверждения. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "parent" to stringSchema("Относительный путь существующей родительской папки; пустая строка означает корень."),
                     "name" to stringSchema("Имя новой папки без символов / и \\."),
-                    required = listOf("root_index", "name")
+                    required = listOf("name")
                 )
             ),
             LlmTool(
                 name = "android_file_copy",
-                description = "Копирует один файл в другую папку внутри того же выбранного корня. Папки целиком не копируются; перезапись существующего файла запрещена. Операция требует подтверждения. $rootDescription",
+                description = "Копирует один файл между папками одного корня (общий накопитель root_index=0 или дополнительная SAF-папка). Папки целиком не копируются; перезапись существующего файла запрещена. Операция требует подтверждения. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "source" to stringSchema("Относительный путь исходного файла."),
                     "destination" to stringSchema("Относительный путь папки назначения; пустая строка означает корень."),
                     "new_name" to stringSchema("Необязательное новое имя копии."),
-                    required = listOf("root_index", "source", "destination")
+                    required = listOf("source", "destination")
                 )
             ),
             LlmTool(
                 name = "android_file_move",
-                description = "Перемещает один файл в другую папку внутри того же выбранного корня. Папки целиком не перемещаются; перезапись запрещена. Сначала копирует, затем удаляет исходник. Операция требует подтверждения. $rootDescription",
+                description = "Перемещает один файл между папками одного корня (общий накопитель root_index=0 или дополнительная SAF-папка). Папки целиком не перемещаются; перезапись запрещена. Сначала копирует, затем удаляет исходник. Операция требует подтверждения. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "source" to stringSchema("Относительный путь исходного файла."),
                     "destination" to stringSchema("Относительный путь папки назначения; пустая строка означает корень."),
                     "new_name" to stringSchema("Необязательное новое имя файла."),
-                    required = listOf("root_index", "source", "destination")
+                    required = listOf("source", "destination")
                 )
             ),
             LlmTool(
                 name = "android_file_delete",
-                description = "Удаляет один файл внутри выбранного корня. Папки и массовое удаление не поддерживаются. Всегда требуется отдельное подтверждение с показом точного пути. $rootDescription",
+                description = "Удаляет один файл из общего накопителя (root_index=0) или дополнительной SAF-папки. Папки и массовое удаление не поддерживаются. Всегда требуется отдельное подтверждение с показом точного пути. $rootDescription",
                 parameters = objectSchema(
-                    "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
+                    "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
                     "path" to stringSchema("Точный относительный путь файла для удаления."),
-                    required = listOf("root_index", "path")
+                    required = listOf("path")
                 )
             )
         )
@@ -98,26 +107,25 @@ object AndroidFileTools {
         name: String,
         arguments: JsonObject
     ): AgentToolResult {
-        val rootIndex = arguments["root_index"]?.jsonPrimitive?.intOrNull
-            ?: throw IllegalArgumentException("Не указан индекс корневой папки.")
-        if (roots.getOrNull(rootIndex) == ALL_FILES_ROOT) {
+        val availableRoots = effectiveRoots(roots)
+        val rootIndex = arguments["root_index"]?.jsonPrimitive?.intOrNull ?: 0
+        if (availableRoots.getOrNull(rootIndex) == ALL_FILES_ROOT) {
             requireAllFilesAccess()
             return when (name) {
-                "android_file_list" -> listSharedStorage(context, roots, arguments)
-                "android_file_read" -> readSharedTextFile(roots, arguments)
+                "android_file_list" -> listSharedStorage(context, availableRoots, arguments)
+                "android_file_read" -> readSharedTextFile(availableRoots, arguments)
                 else -> throw IllegalArgumentException("Неизвестная операция чтения файлов.")
             }
         }
         return when (name) {
-            "android_file_list" -> listDirectory(context, roots, arguments)
-            "android_file_read" -> readTextFile(context, roots, arguments)
+            "android_file_list" -> listDirectory(context, availableRoots, arguments)
+            "android_file_read" -> readTextFile(context, availableRoots, arguments)
             else -> throw IllegalArgumentException("Неизвестная операция чтения файлов.")
         }
     }
 
     fun prepare(name: String, arguments: JsonObject, chatId: Long): AgentToolResult {
-        val rootIndex = arguments["root_index"]?.jsonPrimitive?.intOrNull
-            ?: throw IllegalArgumentException("Не указан индекс папки.")
+        val rootIndex = arguments["root_index"]?.jsonPrimitive?.intOrNull ?: 0
         val payload = when (name) {
             "android_file_create_folder" -> {
                 val parent = safePath(arguments.stringOrEmpty("parent"))
@@ -179,9 +187,10 @@ object AndroidFileTools {
             "Передано действие другого типа в обработчик файлов."
         }
         val payload = Json.parseToJsonElement(action.body).jsonObject
+        val availableRoots = effectiveRoots(roots)
         val rootIndex = payload["root_index"]?.jsonPrimitive?.intOrNull
             ?: throw IllegalArgumentException("Не удалось определить корневую папку.")
-        val rootUri = roots.getOrNull(rootIndex)
+        val rootUri = availableRoots.getOrNull(rootIndex)
             ?: throw IllegalStateException("Выбранная корневая папка больше недоступна. Выдай доступ заново в настройках агента.")
         if (rootUri == ALL_FILES_ROOT) {
             requireAllFilesAccess()

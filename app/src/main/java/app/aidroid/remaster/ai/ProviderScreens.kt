@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -342,20 +345,26 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
     var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
     var endpointError by remember { mutableStateOf<String?>(null) }
     var allFilesAccess by remember { mutableStateOf(android.os.Environment.isExternalStorageManager()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                allFilesAccess = android.os.Environment.isExternalStorageManager()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val allFilesAccessLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) {
         allFilesAccess = android.os.Environment.isExternalStorageManager()
-        if (allFilesAccess) {
-            val current = manager.agentPreferences()
-            manager.saveAgentPreferences(
-                current.copy(androidFileRoots = (current.androidFileRoots + AndroidFileTools.ALL_FILES_ROOT).distinct())
-            )
-            preferences = manager.agentPreferences()
-            savedNotice = "Доступ ко всему общему накопителю включён"
+        savedNotice = if (allFilesAccess) {
+            "Доступ ко всему общему накопителю включён автоматически"
         } else {
-            savedNotice = "Разрешение на доступ ко всем файлам не выдано"
+            "Разрешение на доступ ко всем файлам не выдано"
         }
     }
 
@@ -565,7 +574,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("android_file_access", it) }
                 )
                 Text(
-                    "Доступ ко всему общему накопителю: ${if (allFilesAccess && AndroidFileTools.ALL_FILES_ROOT in preferences.androidFileRoots) "включён" else "не подключён"}. Отдельно выбрано папок: ${preferences.androidFileRoots.count { it != AndroidFileTools.ALL_FILES_ROOT }}.",
+                    "Доступ ко всему общему накопителю: ${if (allFilesAccess) "включён — корень 0 подключён автоматически" else "не выдан"}. Дополнительных SAF-папок: ${preferences.androidFileRoots.count { it != AndroidFileTools.ALL_FILES_ROOT }}.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -601,7 +610,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(15.dp)
                 ) {
-                    Text("Выбрать папку для доступа")
+                    Text("Добавить дополнительную папку (необязательно)")
                 }
                 if (preferences.androidFileRoots.isNotEmpty()) {
                     TextButton(
@@ -641,14 +650,8 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     checked = "termux_auto_safe" in preferences.enabledTools,
                     onChecked = { toggleTool("termux_auto_safe", it) }
                 )
-                ToolPreferenceRow(
-                    title = "Root-доступ к конфигурациям",
-                    description = "Чтение и точечное изменение выбранных системных конфигов; каждая операция требует подтверждения",
-                    checked = "termux_root_access" in preferences.enabledTools,
-                    onChecked = { toggleTool("termux_root_access", it) }
-                )
                 Text(
-                    "Нужен установленный Termux. В ~/.termux/termux.properties включи allow-external-apps=true и выдай Aidroid разрешение RUN_COMMAND. Вывод команд приходит в чат. Root-инструменты доступны только если на устройстве уже настроен su и root-менеджер; изменения ограничены отдельными конфигурационными файлами, создаётся резервная копия. Произвольный root-shell не предоставляется.",
+                    "Нужен установленный Termux. В ~/.termux/termux.properties включи allow-external-apps=true, выдай Aidroid разрешение RUN_COMMAND и отдельно разреши Termux доступ к файлам в настройках Android; для storage-путей в Termux запусти termux-setup-storage. Агент использует bash внутри Termux: su -c работает только если устройство уже рутировано и настроен root-менеджер; adb shell — если установлен android-tools и настроено ADB-подключение (например, через Wireless debugging). Любые команды, которые могут менять данные, а также root- и ADB-команды показываются целиком и требуют подтверждения Aidroid; root-менеджер может запросить отдельное подтверждение. Вывод и код завершения возвращаются в чат.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )

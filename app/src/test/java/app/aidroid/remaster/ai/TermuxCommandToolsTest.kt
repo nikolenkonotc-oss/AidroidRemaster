@@ -12,108 +12,85 @@ class TermuxCommandToolsTest {
     @Test
     fun safeReadOnlyCommandsCanRunWithoutApproval() {
         assertTrue(TermuxCommandTools.isReadOnlyCommand("pwd"))
-        assertTrue(TermuxCommandTools.isReadOnlyCommand("ls -la"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("ls -la /storage/emulated/0"))
         assertTrue(TermuxCommandTools.isReadOnlyCommand("df -h"))
         assertTrue(TermuxCommandTools.isReadOnlyCommand("pkg list-installed"))
-        assertFalse(TermuxCommandTools.isReadOnlyCommand("pkg update"))
-        assertFalse(TermuxCommandTools.isReadOnlyCommand("git branch -D main"))
-        assertFalse(TermuxCommandTools.isReadOnlyCommand("git diff --output=patch.txt"))
-        assertFalse(TermuxCommandTools.isReadOnlyCommand("date -s 2026-01-01"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("adb devices"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("adb shell getprop"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("adb shell settings get global airplane_mode_on"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("su -c 'id'"))
+        assertTrue(TermuxCommandTools.isReadOnlyCommand("su -c 'ls /system/etc'"))
+        assertFalse(TermuxCommandTools.isReadOnlyCommand("su -c 'settings put global airplane_mode_on 1'"))
+        assertFalse(TermuxCommandTools.isReadOnlyCommand("su -c 'rm /data/local/tmp/test'"))
     }
 
     @Test
-    fun shellOperatorsAndUnapprovedExecutablesAreRejected() {
+    fun modifyingAndPrivilegedCommandsAlwaysRequireApproval() {
         listOf(
-            "pwd && id",
-            "ls | grep dcim",
-            "cat file > copy",
-            "rm -rf something",
-            "sh -c id",
+            "pkg install android-tools",
+            "pkg update",
+            "git branch -D main",
+            "date -s 2026-01-01",
             "su -c id",
-            "python script.py"
+            "adb shell settings put global airplane_mode_on 1",
+            "adb shell pm clear com.example.app",
+            "rm -f test.txt",
+            "ls -la | grep dcim"
         ).forEach { command ->
-            assertFalse("Expected rejection: $command", runCatching {
-                TermuxCommandTools.validateAndTokenize(command)
-            }.isSuccess)
+            assertFalse("Expected approval: $command", TermuxCommandTools.isReadOnlyCommand(command))
         }
     }
 
     @Test
-    fun mutatingFindOptionsAreRejected() {
-        listOf("find . -delete", "find . -exec rm file \\;", "find . -fprint output.txt").forEach { command ->
-            assertFalse("Expected rejection: $command", runCatching {
-                TermuxCommandTools.validateAndTokenize(command)
-            }.isSuccess)
-        }
-    }
-
-    @Test
-    fun rootConfigPathsAreRestrictedToApprovedNonCriticalFiles() {
-        assertEquals(
-            "/system/etc/example.conf",
-            TermuxCommandTools.validateConfigPath("/system/etc/example.conf", write = false)
-        )
-        assertEquals(
-            "/vendor/etc/device.xml",
-            TermuxCommandTools.validateConfigPath("/vendor/etc/device.xml", write = true)
-        )
-        listOf(
-            "/system/etc/../build.prop",
-            "/system/build.prop",
-            "/system/etc/security/ca.xml",
-            "/vendor/etc/init.rc",
-            "/odm/etc/keys/device.xml",
-            "/product/etc/private.bin"
-        ).forEach { path ->
-            assertFalse("Expected rejection: $path", runCatching {
-                TermuxCommandTools.validateConfigPath(path, write = false)
-            }.isSuccess)
-        }
-    }
-
-    @Test
-    fun rootDirectoryListingIsLimitedToSystemConfigFolders() {
-        assertEquals("/system/etc", TermuxCommandTools.validateConfigDirectory("/system/etc/"))
-        assertEquals("/vendor/etc/hw", TermuxCommandTools.validateConfigDirectory("/vendor/etc/hw"))
-        listOf(
-            "/data",
-            "/system",
-            "/system/etc/security",
-            "/product/etc/../etc",
-            "/odm/etc/keys"
-        ).forEach { path ->
-            assertFalse("Expected rejection: $path", runCatching {
-                TermuxCommandTools.validateConfigDirectory(path)
-            }.isSuccess)
-        }
-    }
-
-    @Test
-    fun rootWriteAlwaysCreatesAnApprovalAction() {
-        val result = TermuxCommandTools.prepareRootWrite(
-            buildJsonObject {
-                put("path", "/system/etc/example.conf")
-                put("content", "mode=1")
-            },
+    fun rootAndAdbCommandsCreateExplicitApprovalActions() {
+        val root = TermuxCommandTools.prepare(
+            buildJsonObject { put("command", "su -c 'id'") },
             chatId = 42L
         )
-        assertEquals(AgentActionType.TERMUX_COMMAND, result.action?.type)
-        assertEquals("root_write", result.action?.subject)
-        assertTrue(result.action?.body?.contains("/system/etc/example.conf") == true)
+        assertEquals(AgentActionType.TERMUX_COMMAND, root.action?.type)
+        assertEquals("root", root.action?.subject)
+        assertEquals("su -c 'id'", root.action?.body)
+
+        val adb = TermuxCommandTools.prepare(
+            buildJsonObject { put("command", "adb shell getprop ro.build.version.release") },
+            chatId = 42L
+        )
+        assertEquals("adb", adb.action?.subject)
     }
 
     @Test
-    fun rootToolsAreOnlyExposedWhenBothTermuxAndRootAreEnabled() {
-        assertTrue(TermuxCommandTools.definitions(emptySet(), rootAccessEnabled = true).isEmpty())
-        val tools = TermuxCommandTools.definitions(setOf("termux_command"), rootAccessEnabled = false)
-        assertEquals(listOf("termux_run_command"), tools.map { it.name })
-
-        val rootTools = TermuxCommandTools.definitions(
-            setOf("termux_command"),
-            rootAccessEnabled = true
+    fun shellCommandsThatNeedApprovalAreDisplayedVerbatim() {
+        val result = TermuxCommandTools.prepare(
+            buildJsonObject { put("command", "pwd && ls -la | head -20") },
+            chatId = 7L
         )
-        assertTrue(rootTools.any { it.name == "termux_root_list_config" })
-        assertTrue(rootTools.any { it.name == "termux_root_read_config" })
-        assertTrue(rootTools.any { it.name == "termux_root_write_config" })
+        assertEquals("shell", result.action?.subject)
+        assertEquals("pwd && ls -la | head -20", result.action?.body)
+    }
+
+    @Test
+    fun deviceWipingAndPartitionFlashingCommandsAreBlocked() {
+        listOf(
+            "rm -rf /",
+            "dd if=/dev/zero of=/dev/block/by-name/system",
+            "mkfs.ext4 /dev/block/by-name/userdata",
+            "fastboot flash boot boot.img"
+        ).forEach { command ->
+            assertFalse("Expected block: $command", runCatching {
+                TermuxCommandTools.prepare(
+                    buildJsonObject { put("command", command) },
+                    chatId = 5L
+                )
+            }.isSuccess)
+        }
+    }
+
+    @Test
+    fun termuxToolIsOnlyExposedWhenEnabled() {
+        assertTrue(TermuxCommandTools.definitions(emptySet()).isEmpty())
+        assertEquals(
+            listOf("termux_run_command"),
+            TermuxCommandTools.definitions(setOf("termux_command")).map { it.name }
+        )
     }
 }
