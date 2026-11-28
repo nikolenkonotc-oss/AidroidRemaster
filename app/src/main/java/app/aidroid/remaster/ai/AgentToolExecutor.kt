@@ -30,6 +30,12 @@ class AgentToolExecutor(
         .writeTimeout(15, TimeUnit.SECONDS)
         .callTimeout(35, TimeUnit.SECONDS)
         .build()
+    private val searchHttp = http.newBuilder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(16, TimeUnit.SECONDS)
+        .build()
     // Image generation/edit can take much longer than ordinary tool calls.
     // Keep it separate so a long render does not relax timeouts for every tool.
     private val imageHttp = http.newBuilder()
@@ -146,9 +152,8 @@ class AgentToolExecutor(
     private fun searchTavily(query: String, freshness: String, key: String): List<WebSearchHit> {
         val payload = buildJsonObject {
             put("query", query)
-            put("search_depth", "advanced")
-            put("chunks_per_source", 2)
-            put("max_results", 8)
+            put("search_depth", "basic")
+            put("max_results", 6)
             put("topic", if (freshness == "any") "general" else "news")
             put("include_answer", false)
             put("include_raw_content", false)
@@ -164,7 +169,8 @@ class AgentToolExecutor(
         val response = postJson(
             "https://api.tavily.com/search",
             payload,
-            mapOf("Authorization" to "Bearer $key")
+            mapOf("Authorization" to "Bearer $key"),
+            client = searchHttp
         )
         return WebSearchApiParser.parseTavily(response)
     }
@@ -190,7 +196,7 @@ class AgentToolExecutor(
             .header("X-Subscription-Token", key)
             .get()
             .build()
-        return WebSearchApiParser.parseBrave(executeJson(request))
+        return WebSearchApiParser.parseBrave(executeJson(request, searchHttp))
     }
 
     private suspend fun openWebPage(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
