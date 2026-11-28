@@ -1668,10 +1668,8 @@ private fun ConversationScreen(
     }
     var attachmentError by remember { mutableStateOf<String?>(null) }
     var uiNotice by remember { mutableStateOf<String?>(null) }
-    var pendingAgentRequests by remember(chat.id) { mutableIntStateOf(0) }
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val uriHandler = LocalUriHandler.current
-    val activeAgentChatIds by agentRunner.activeChatIds.collectAsState()
     val agentToolProgress by agentRunner.toolProgress.collectAsState()
 
     fun showNotice(message: String) {
@@ -1905,7 +1903,6 @@ private fun ConversationScreen(
             attachmentError = "Не удалось запустить запрос: ${error.message ?: "попробуй ещё раз"}"
             return
         }
-        pendingAgentRequests++
         scope.launch {
             try {
                 task.await()
@@ -1914,7 +1911,7 @@ private fun ConversationScreen(
             } catch (error: Exception) {
                 attachmentError = "Не удалось отправить запрос: ${error.message ?: "попробуй ещё раз"}"
             } finally {
-                pendingAgentRequests = (pendingAgentRequests - 1).coerceAtLeast(0)
+                // Agent activity is rendered inside the conversation history.
             }
         }
     }
@@ -2291,25 +2288,6 @@ private fun ConversationScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                AnimatedVisibility(
-                    visible = pendingAgentRequests > 0 || chat.id in activeAgentChatIds,
-                    enter = fadeIn(tween(160)) + expandVertically(tween(180)),
-                    exit = fadeOut(tween(110)) + shrinkVertically(tween(140))
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
-                        Text(
-                            agentToolProgress[chat.id] ?: if (pendingAgentRequests == 1 || chat.id in activeAgentChatIds) "Агент готовит ответ…" else "Агент обрабатывает запросы…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
-                }
                 if (pendingAttachments.isNotEmpty()) {
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
