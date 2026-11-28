@@ -1065,12 +1065,12 @@ private fun ChatWorkspace(
                     chat = destinationChat,
                     messages = if (destinationChatId == selectedChatId) messages else null,
                     onBack = onBackToChats,
-                    onSend = { text, attachments ->
+                    onSend = { text, attachments, webSearchEnabled ->
                         // This task belongs to the Activity, not the chat screen composition.
                         // Switching to Settings/Models must not cancel an in-flight agent response.
                         agentTaskScope.async {
                             repository.sendUserMessage(destinationChat.id, text, attachments)
-                            agentRunner.respondToChat(destinationChat.id)
+                            agentRunner.respondToChat(destinationChat.id, webSearchEnabled)
                             Unit
                         }
                     },
@@ -1589,11 +1589,17 @@ private fun ConversationScreen(
     chat: ChatEntity,
     messages: List<MessageEntity>?,
     onBack: () -> Unit,
-    onSend: (String, List<StoredAttachment>) -> Deferred<Unit>,
+    onSend: (String, List<StoredAttachment>, Boolean) -> Deferred<Unit>,
     onDeleteMessage: suspend (MessageEntity) -> Unit,
     onRename: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val chatPreferences = remember(context) {
+        context.getSharedPreferences("aidroid_chat_preferences", Context.MODE_PRIVATE)
+    }
+    var webSearchEnabled by remember(chat.id) {
+        mutableStateOf(chatPreferences.getBoolean("web_search_enabled_" + chat.id, agentRunner.isToolEnabled("web_search")))
+    }
     val messagePressShrinkPx = with(androidx.compose.ui.platform.LocalDensity.current) {
         MESSAGE_PRESS_SHRINK_DP.dp.toPx()
     }
@@ -1847,7 +1853,7 @@ private fun ConversationScreen(
         val task = try {
             // Start the send/agent task synchronously in the Activity scope before this
             // screen can be disposed by navigation.
-            onSend(text, attachments)
+            onSend(text, attachments, webSearchEnabled)
         } catch (error: Exception) {
             attachmentError = "Не удалось запустить запрос: ${error.message ?: "попробуй ещё раз"}"
             return
@@ -1878,10 +1884,18 @@ private fun ConversationScreen(
                     contentDescription = "К списку чатов",
                     tint = MaterialTheme.colorScheme.onSurface
                 )
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(chat.title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text("Отдельная история · хранится локально", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
-                }
+                FilterChip(
+                    selected = webSearchEnabled,
+                    onClick = {
+                        webSearchEnabled = !webSearchEnabled
+                        chatPreferences.edit().putBoolean("web_search_enabled_" + chat.id, webSearchEnabled).apply()
+                    },
+                    label = { Text("Поиск в интернете", maxLines = 1) },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Language, contentDescription = null, modifier = Modifier.size(17.dp))
+                    },
+                    modifier = Modifier.weight(1f)
+                )
                 PressAnimatedIconButton(
                     onClick = { showRename = true },
                     icon = Icons.Filled.Edit,
