@@ -78,10 +78,7 @@ object AndroidControlTools {
                         putJsonObject("properties") {
                             putJsonObject("section") {
                                 put("type", "string")
-                                put("description", "Раздел системных настроек для открытия.")
-                                put("enum", buildJsonArray {
-                                    settingsSections.keys.forEach { add(JsonPrimitive(it)) }
-                                })
+                                put("description", "Ключ известного раздела (wifi, display и т.д.) или полный Android Settings action, например android.settings.APP_SEARCH_SETTINGS. Открытие только экрана; серьёзные системные действия не выполняются.")
                             }
                         }
                         putJsonArray("required") { add(JsonPrimitive("section")) }
@@ -176,8 +173,7 @@ object AndroidControlTools {
             "android_open_settings" -> {
                 val section = arguments["section"]?.jsonPrimitive?.contentOrNull?.lowercase()
                     ?: throw IllegalArgumentException("Не указан раздел настроек Android.")
-                val label = settingsSections[section]
-                    ?: throw IllegalArgumentException("Этот раздел системных настроек не разрешён.")
+                val label = settingsSections[section] ?: customSettingsLabel(section)
                 actionResult(
                     chatId = chatId,
                     title = "Открыть настройки Android: $label?",
@@ -330,7 +326,7 @@ object AndroidControlTools {
     )
 
     private fun settingsIntent(context: Context, section: String): Intent {
-        val action = when (section) {
+        val action = if (section.startsWith("android.settings.")) section else when (section) {
             "main" -> "android.settings.SETTINGS"
             "network" -> "android.settings.WIRELESS_SETTINGS"
             "wifi" -> "android.settings.WIFI_SETTINGS"
@@ -365,9 +361,32 @@ object AndroidControlTools {
         }
     }
 
+
+    private fun customSettingsLabel(action: String): String {
+        require(action.matches(Regex("android\\.settings\\.[A-Z0-9_]{2,100}"))) {
+            "Укажи известный раздел или полный Android Settings action."
+        }
+        val suffix = action.substringAfterLast('.')
+        val blockedTokens = setOf(
+            "FACTORY_RESET",
+            "MASTER_CLEAR",
+            "MANAGE_DEVICE_ADMINS",
+            "DEVICE_ADMIN",
+            "MANAGE_ALL_FILES_ACCESS_PERMISSION",
+            "MANAGE_APP_ALL_FILES_ACCESS_PERMISSION",
+            "MANAGE_UNKNOWN_APP_SOURCES",
+            "REQUEST_INSTALL_PACKAGES",
+            "CREDENTIAL",
+            "ENCRYPTION"
+        )
+        require(blockedTokens.none { suffix.contains(it) }) {
+            "Этот системный экран относится к защищённым или критичным действиям и пока не открывается агентом."
+        }
+        return suffix.lowercase().replace('_', ' ')
+    }
+
     private fun openSettings(context: Context, section: String): AgentToolResult {
-        val label = settingsSections[section]
-            ?: throw IllegalArgumentException("Этот раздел системных настроек не разрешён.")
+        val label = settingsSections[section] ?: customSettingsLabel(section)
         val intent = settingsIntent(context, section)
         return try {
             context.startActivity(intent)
