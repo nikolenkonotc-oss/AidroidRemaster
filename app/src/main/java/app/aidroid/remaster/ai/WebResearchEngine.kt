@@ -90,7 +90,7 @@ class WebResearchEngine {
         if (mwmblHits.isEmpty() && mwmblAttempt.isSuccess) {
             errors += "Mwmbl: API не вернул подходящих веб-результатов"
         }
-        if (found.size >= 5) return found.values.take(8)
+        if (found.size >= 5 && freshness == "any") return found.values.take(8)
 
         // Legacy providers are fallback-only. They are intentionally not queried
         // when the primary API already returned enough usable results.
