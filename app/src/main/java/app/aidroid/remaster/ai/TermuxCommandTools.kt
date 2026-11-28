@@ -34,7 +34,7 @@ object TermuxCommandTools {
     private val readOnlyCommands = setOf(
         "pwd", "ls", "df", "du", "stat", "find", "cat", "head", "tail", "grep",
         "getprop", "uname", "id", "whoami", "date", "git", "pkg",
-        "termux-battery-status", "termux-wifi-connectioninfo", "adb"
+        "termux-battery-status", "termux-wifi-connectioninfo"
     )
 
     fun definitions(enabled: Set<String>): List<LlmTool> {
@@ -87,41 +87,12 @@ object TermuxCommandTools {
                 else -> false
             }
             "date" -> args.none { it == "-s" || it == "--set" || it.startsWith("--set=") }
-            "adb" -> isReadOnlyAdb(args)
-            "su" -> {
-                if (args.size == 2 && args[0] == "-c") {
-                    val inner = tokenizeSimpleCommand(args[1])
-                    inner.isNotEmpty() && inner.first() !in setOf("su", "sudo") &&
-                        isReadOnlyCommand(args[1])
-                } else false
-            }
+            // ADB and root always require an explicit in-app approval, even for
+            // diagnostic commands. They are intentionally absent from readOnlyCommands.
             else -> true
         }
     }
 
-    private fun isReadOnlyAdb(args: List<String>): Boolean {
-        return when (args.firstOrNull()) {
-            "version", "devices", "get-state", "help" -> true
-            "shell" -> {
-                val remote = args.drop(1)
-                if (remote.isEmpty() || remote.any {
-                        it in setOf(";", "&&", "||", "|", ">", ">>", "<", "`", "$")
-                    }) {
-                    false
-                } else {
-                    when (remote.firstOrNull()) {
-                        "getprop", "id", "whoami", "ls", "df", "du", "mount", "ps" -> true
-                        "pm" -> remote.getOrNull(1) == "list"
-                        "cmd" -> remote.getOrNull(1) == "package" && remote.getOrNull(2) == "list"
-                        "settings" -> remote.getOrNull(1) == "get"
-                        "dumpsys" -> remote.getOrNull(1) in setOf("battery", "window", "activity", "display")
-                        else -> false
-                    }
-                }
-            }
-            else -> false
-        }
-    }
 
     fun prepare(arguments: JsonObject, chatId: Long): AgentToolResult {
         val command = arguments["command"]?.jsonPrimitive?.contentOrNull
@@ -177,7 +148,7 @@ object TermuxCommandTools {
         }
         val normalized = clean.lowercase()
         val destructivePatterns = listOf(
-            Regex("""\brm\s+-(?:rf|fr)\s+/(?:\s|$)"""),
+            Regex("""\brm\b[^\n;]*\s-(?:[^\s]*r[^\s]*|--recursive)(?:\s|$)"""),
             Regex("""\bdd\b.*\bof\s*=\s*/dev/block/"""),
             Regex("""\bmkfs(?:\.[a-z0-9]+)?\s+/dev/"""),
             Regex("""\bwipefs\b.*?/dev/"""),
