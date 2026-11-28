@@ -341,14 +341,12 @@ object AndroidFileTools {
     }
 
     private fun objectSchema(
-        vararg fields: Pair<String, JsonObject>,
-        required: List<String>
+        vararg fields: Pair<String, JsonObject>
     ) = buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
             fields.forEach { (name, schema) -> put(name, schema) }
         }
-        putJsonArray("required") { required.forEach { add(JsonPrimitive(it)) } }
         put("additionalProperties", false)
     }
 
