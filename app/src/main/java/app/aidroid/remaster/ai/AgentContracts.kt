@@ -53,7 +53,9 @@ data class AgentPreferences(
     // Null means choose the active image-capable provider, then direct OpenAI.
     val imageProviderId: String? = null,
     val imageGenerationModel: String = "gpt-image-2.6-flare",
-    val imageEditModel: String = "gpt-image-2.6-sunburst"
+    val imageEditModel: String = "gpt-image-2.6-sunburst",
+    // Persistent, user-controlled permission for allowlisted low-risk Android actions.
+    val androidAutonomyEnabled: Boolean = false
 )
 
 data class LlmImageAttachment(
