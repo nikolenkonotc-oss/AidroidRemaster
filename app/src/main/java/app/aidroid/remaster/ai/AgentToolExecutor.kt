@@ -79,7 +79,8 @@ class AgentToolExecutor(
         return when (name) {
             "calculator", "current_datetime" -> AgentToolResult(BuiltInTools.execute(name, arguments))
             "android_device_status" -> AgentToolResult(AndroidControlTools.readDeviceStatus(appContext))
-            "android_open_settings", "android_set_media_volume" ->
+            "android_open_settings", "android_open_settings_panel",
+            "android_set_media_volume", "android_set_display_parameter" ->
                 AndroidControlTools.prepare(name, arguments, chatId)
             "web_search" -> searchWeb(arguments)
             "web_open" -> openWebPage(arguments)
