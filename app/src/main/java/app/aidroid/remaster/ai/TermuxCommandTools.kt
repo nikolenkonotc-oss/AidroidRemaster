@@ -109,7 +109,7 @@ object TermuxCommandTools {
             else -> "shell"
         }
         val title = when (subject) {
-            "root" -> "Выполнить root-команду в Termux?"
+            "root" -> "Выполнить root-команду через KernelSU?"
             "adb" -> "Выполнить ADB-команду в Termux?"
             else -> "Выполнить команду в Termux?"
         }
@@ -155,7 +155,7 @@ object TermuxCommandTools {
      */
     internal fun rootCommandPayload(command: String): String {
         val clean = command.trim()
-        val prefix = Regex("""(?is)^su\\s+(?:-c|--command)\\s+""")
+        val prefix = Regex("""(?is)^su\s+(?:-c|--command)\s+""")
             .find(clean)
             ?: throw IllegalArgumentException("Для root используй формат: su -c 'команда'.")
         val payload = clean.substring(prefix.range.last + 1).trim()
