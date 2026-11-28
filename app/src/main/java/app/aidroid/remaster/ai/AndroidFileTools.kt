@@ -15,6 +15,7 @@ import java.util.UUID
 object AndroidFileTools {
     private const val MAX_LIST_ITEMS = 100
     private const val MAX_TEXT_BYTES = 64 * 1024
+    private const val MAX_COPY_BYTES = 512L * 1024L * 1024L
 
     fun definitions(enabled: Set<String>, rootsCount: Int): List<LlmTool> {
         if ("android_file_access" !in enabled) return emptyList()
@@ -310,6 +311,7 @@ object AndroidFileTools {
         destination: DocumentFile,
         name: String
     ): DocumentFile {
+        require(source.length() in 0..MAX_COPY_BYTES) { "Размер файла превышает лимит копирования 512 МБ." }
         val target = destination.createFile(
             source.type?.takeIf { it.isNotBlank() } ?: "application/octet-stream",
             name
@@ -319,7 +321,15 @@ object AndroidFileTools {
                 requireNotNull(input) { "Не удалось открыть исходный файл." }
                 context.contentResolver.openOutputStream(target.uri, "w").use { output ->
                     requireNotNull(output) { "Не удалось записать копию файла." }
-                    input.copyTo(output)
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= MAX_COPY_BYTES) { "Файл превысил лимит копирования 512 МБ." }
+                        output.write(buffer, 0, count)
+                    }
                     output.flush()
                 }
             }
