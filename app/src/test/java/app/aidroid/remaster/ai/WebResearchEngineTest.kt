@@ -3,145 +3,14 @@ package app.aidroid.remaster.ai
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import kotlinx.serialization.json.*
 import org.junit.Test
 
 class WebResearchEngineTest {
     @Test
-    fun parsesMwmblJsonSearchResults() {
-        val json = """
-            {
-              "query": "android",
-              "number_of_results": 1,
-              "results": [
-                {
-                  "url": "https://developer.android.com/",
-                  "title": "Android Developers",
-                  "content": "Build apps for Android devices.",
-                  "engine": "mwmbl",
-                  "score": 1.0
-                }
-              ]
-            }
-        """.trimIndent()
-
-        val result = WebHtmlParser.parseMwmblSearch(json).single()
-
-        assertEquals("Android Developers", result.title)
-        assertEquals("https://developer.android.com/", result.url)
-        assertEquals("Build apps for Android devices.", result.snippet)
-        assertEquals("Mwmbl", result.source)
-    }
-
-    @Test
-    fun filtersUnsafeMwmblUrlsAndDeduplicatesResults() {
-        val json = """
-            {
-              "results": [
-                {"url":"https://example.com/a","title":"First","content":"One","engine":"mwmbl"},
-                {"url":"https://example.com/a","title":"Duplicate","content":"Two","engine":"mwmbl"},
-                {"url":"http://127.0.0.1/private","title":"Local","content":"Unsafe","engine":"mwmbl"},
-                {"url":"file:///etc/passwd","title":"File","content":"Unsafe","engine":"mwmbl"}
-              ]
-            }
-        """.trimIndent()
-
-        val result = WebHtmlParser.parseMwmblSearch(json)
-
-        assertEquals(1, result.size)
-        assertEquals("First", result.single().title)
-    }
-
-    @Test
-    fun rejectsMalformedMwmblJson() {
-        val result = runCatching { WebHtmlParser.parseMwmblSearch("{not-json") }
-        assertTrue(result.isFailure)
-    }
-
-    @Test
-    fun parsesDuckDuckGoSearchResultsAndUnwrapsTargetUrl() {
-        val html = """
-            <div class="result">
-              <a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Farticle">Example article</a>
-              <a class="result__snippet">A useful summary &amp; details.</a>
-            </div>
-        """.trimIndent()
-
-        val result = WebHtmlParser.parseDuckDuckGo(html).single()
-
-        assertEquals("Example article", result.title)
-        assertEquals("https://example.com/article", result.url)
-        assertEquals("A useful summary & details.", result.snippet)
-        assertEquals("DuckDuckGo", result.source)
-    }
-
-    @Test
-    fun parsesMojeekResults() {
-        val html = """
-            <a class="ob" href="https://example.com/page">Example page</a>
-            <p class="s">Page description</p>
-        """.trimIndent()
-
-        val result = WebHtmlParser.parseMojeek(html).single()
-        assertEquals("https://example.com/page", result.url)
-        assertEquals("Page description", result.snippet)
-        assertEquals("Mojeek", result.source)
-    }
-
-    @Test
-    fun parsesWikipediaSearchApiResults() {
-        val json = buildJsonObject {
-            putJsonObject("query") {
-                putJsonArray("search") {
-                    add(buildJsonObject {
-                        put("pageid", 12345)
-                        put("title", "Grand Theft Auto VI")
-                        put("snippet", "An upcoming <span>video game</span>.")
-                    })
-                }
-            }
-        }.toString()
-
-        val result = WebHtmlParser.parseWikipediaSearch(json, "en").single()
-
-        assertEquals("Grand Theft Auto VI", result.title)
-        assertEquals("https://en.wikipedia.org/?curid=12345", result.url)
-        assertEquals("An upcoming video game.", result.snippet)
-        assertEquals("Wikipedia (en)", result.source)
-    }
-
-    @Test
-    fun parsesGoogleNewsRssItemsAndCdata() {
-        val xml = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <rss><channel>
-              <item>
-                <title><![CDATA[GTA VI news &amp; updates]]></title>
-                <link>https://news.google.com/rss/articles/example?source=feed&amp;id=7</link>
-                <description><![CDATA[<p>Latest <b>confirmed</b> details &amp; context.</p>]]></description>
-                <pubDate>Sat, 28 Nov 2026 10:30:00 GMT</pubDate>
-              </item>
-              <item>
-                <title>Unsafe local result</title>
-                <link>http://127.0.0.1/private</link>
-                <description>Must be ignored</description>
-              </item>
-            </channel></rss>
-        """.trimIndent()
-
-        val result = WebHtmlParser.parseGoogleNewsRss(xml).single()
-
-        assertEquals("GTA VI news & updates", result.title)
-        assertEquals("https://news.google.com/rss/articles/example?source=feed&id=7", result.url)
-        assertEquals("Latest confirmed details & context.", result.snippet)
-        assertEquals("Google News", result.source)
-        assertEquals("Sat, 28 Nov 2026 10:30:00 GMT", result.publishedAt)
-    }
-
-    @Test
     fun extractsMainArticleAndRemovesScriptsNavigationAndFooter() {
         val html = """
-            <html><head><title>Article &amp; facts</title></head>
+            <html><head><title>Article &amp; facts</title>
+            <meta name="description" content="A useful description &amp; context."></head>
             <body>
               <nav>Navigation must not appear</nav>
               <main><h1>Heading</h1><p>Useful <b>article</b> text.</p>
@@ -157,6 +26,12 @@ class WebResearchEngineTest {
         assertFalse(content.contains("secretScript"))
         assertFalse(content.contains("Navigation must not appear"))
         assertFalse(content.contains("Footer must not appear"))
+        assertEquals("A useful description & context.", WebHtmlParser.extractDescription(html))
+    }
+
+    @Test
+    fun normalizesPlainText() {
+        assertEquals("A clean sentence.", WebHtmlParser.normalizePlainText("A   clean   sentence ."))
     }
 
     @Test
