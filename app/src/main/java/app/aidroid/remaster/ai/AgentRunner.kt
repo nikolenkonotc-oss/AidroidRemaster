@@ -50,18 +50,15 @@ class AgentRunner(
     private val _activeChatIds = MutableStateFlow<Set<Long>>(emptySet())
     val activeChatIds: StateFlow<Set<Long>> = _activeChatIds.asStateFlow()
 
-    suspend fun respondToChat(chatId: Long): AgentRunResult =
+    suspend fun respondToChat(chatId: Long, webSearchEnabled: Boolean = providers.agentPreferences().enabledTools.contains("web_search")): AgentRunResult =
         chatLocks.computeIfAbsent(chatId) { Mutex() }.withLock {
             _activeChatIds.update { it + chatId }
             try {
-                executeResponse(chatId)
+                executeResponse(chatId, webSearchEnabled)
             } finally {
                 _activeChatIds.update { it - chatId }
             }
         }
-
-    suspend fun searchWeb(query: String, freshness: String = "any"): List<WebSearchHit> =
-        toolExecutor.searchForUi(query, freshness)
 
     fun isToolEnabled(toolId: String): Boolean = toolId in providers.agentPreferences().enabledTools
 
@@ -69,7 +66,7 @@ class AgentRunner(
         actionReplies[actionId]?.complete(approved)
     }
 
-    private suspend fun executeResponse(chatId: Long): AgentRunResult {
+    private suspend fun executeResponse(chatId: Long, webSearchEnabled: Boolean): AgentRunResult {
         return try {
             val config = providers.activeProvider()
                 ?: return saveResult(
@@ -82,7 +79,11 @@ class AgentRunner(
                 return saveResult(chatId, false, "Для подключения «${config.name}» нужен API-ключ. Добавь его в настройках провайдера.")
             }
 
-            val preferences = providers.agentPreferences()
+            val basePreferences = providers.agentPreferences()
+            val preferences = basePreferences.copy(
+                enabledTools = basePreferences.enabledTools.filterNot { it == "web_search" } +
+                    if (webSearchEnabled) listOf("web_search") else emptyList()
+            )
             val savedMessages = chatDao.getMessagesForInference(chatId)
             val history = mutableListOf(
                 LlmMessage(
