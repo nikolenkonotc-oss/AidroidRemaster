@@ -59,6 +59,14 @@ class TermuxCommandToolsTest {
     }
 
     @Test
+    fun rootCommandPayloadIsUnwrappedForAidroidSuProcess() {
+        assertEquals("id", TermuxCommandTools.rootCommandPayload("su -c 'id'"))
+        assertEquals("ls -la /system/etc", TermuxCommandTools.rootCommandPayload("su -c 'ls -la /system/etc'"))
+        assertEquals("echo \\\"hello\\\" && id", TermuxCommandTools.rootCommandPayload("su -c 'echo \\\"hello\\\" && id'"))
+        assertEquals("echo 'hello' && id", TermuxCommandTools.rootCommandPayload("su -c \"echo 'hello' && id\""))
+    }
+
+    @Test
     fun shellCommandsThatNeedApprovalAreDisplayedVerbatim() {
         val result = TermuxCommandTools.prepare(
             buildJsonObject { put("command", "pwd && ls -la | head -20") },
