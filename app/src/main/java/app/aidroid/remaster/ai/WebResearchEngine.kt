@@ -570,7 +570,7 @@ internal object WebHtmlParser {
             val url = textField("url").trim()
             val snippet = (textField("content").ifBlank { textField("extract") })
                 .replace(Regex("""<[^>]+>"""), " ")
-                .replace(Regex("""\\s+"""), " ")
+                .replace(Regex("""\s+"""), " ")
                 .trim()
             val engine = textField("engine").ifBlank { "mwmbl" }
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
