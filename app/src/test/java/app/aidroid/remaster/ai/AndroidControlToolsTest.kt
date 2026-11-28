@@ -53,6 +53,17 @@ class AndroidControlToolsTest {
     }
 
     @Test
+    fun genericAndroidSettingsActionIsNormalizedWhenInputIsLowercase() {
+        val result = AndroidControlTools.prepare(
+            "android_open_settings",
+            buildJsonObject { put("section", "android.settings.app_search_settings") },
+            chatId = 42L
+        )
+
+        assertEquals("android.settings.APP_SEARCH_SETTINGS", result.action?.body)
+    }
+
+    @Test
     fun openingCriticalFactoryResetSettingsIsRejected() {
         assertThrows(IllegalArgumentException::class.java) {
             AndroidControlTools.prepare(
