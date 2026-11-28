@@ -45,8 +45,9 @@ object AndroidFileTools {
                 description = "Просматривает содержимое общего накопителя или дополнительной папки. root_index=0 — весь /storage/emulated/0 после выдачи Android «Доступ ко всем файлам»; SAF-папки — только дополнительные корни. path — относительный путь внутри root_index, пустая строка означает корень. $rootDescription",
                 parameters = objectSchema(
                     "root_index" to integerSchema("Всегда передавай 0 для всего общего накопителя /storage/emulated/0. SAF-папки — только дополнительные корни с индексами от 1."),
-                    "path" to stringSchema("Относительный путь папки внутри выбранного корня."),
-                        )
+                    "path" to stringSchema("Относительный путь папки внутри выбранного корня; пустая строка означает корень."),
+                    required = listOf("root_index", "path")
+                )
             ),
             LlmTool(
                 name = "android_file_read",
