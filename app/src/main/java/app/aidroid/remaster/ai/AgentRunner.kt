@@ -311,7 +311,14 @@ class AgentRunner(
         "android_file_copy" -> "Готовлю копирование файла…"
         "android_file_move" -> "Готовлю перемещение файла…"
         "android_file_delete" -> "Готовлю удаление файла…"
-        "termux_run_command" -> "Выполняю команду Termux и получаю вывод…\n" + arguments["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "termux_run_command" -> {
+            val command = arguments["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (command.trimStart().startsWith("su ", ignoreCase = true)) {
+                "Выполняю root-команду через KernelSU…\\n$command"
+            } else {
+                "Выполняю команду Termux…\\n$command"
+            }
+        }
         else -> "Выполняю действие…"
     }
 
