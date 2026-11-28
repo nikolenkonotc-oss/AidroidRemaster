@@ -333,7 +333,7 @@ internal object WebHtmlParser {
             .find(html)?.groupValues?.get(1)?.let(::stripHtml).orEmpty().take(300)
 
         val source = listOf("article", "main", "body").firstNotNullOfOrNull { tag ->
-            Regex("""(?is)<\${tag}\b[^>]*>(.*?)</\${tag}\s*>""").find(html)?.groupValues?.get(1)
+            Regex("""(?is)<${tag}\b[^>]*>(.*?)</${tag}\s*>""").find(html)?.groupValues?.get(1)
         } ?: html
         return title to stripHtml(source)
     }
@@ -354,7 +354,7 @@ internal object WebHtmlParser {
             .replace(Regex("""\n{3,}"""), "\n\n").trim()
 
     private fun attribute(attributes: String, name: String): String? {
-        val pattern = Regex("""(?is)\b\${Regex.escape(name)}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
+        val pattern = Regex("""(?is)\b${Regex.escape(name)}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
         val match = pattern.find(attributes) ?: return null
         return (1..3).firstNotNullOfOrNull { match.groups[it]?.value }?.let(::decodeHtml)
     }
