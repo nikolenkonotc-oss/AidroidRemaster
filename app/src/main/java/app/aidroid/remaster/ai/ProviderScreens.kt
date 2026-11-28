@@ -515,7 +515,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
                     title = "Открытие системных настроек",
-                    description = "26 разрешённых системных разделов: сеть, экран, звук, приложения, уведомления, безопасность и другие",
+                    description = "26 быстрых разделов и стандартные Android Settings actions; критичные экраны заблокированы",
                     checked = "android_open_settings" in preferences.enabledTools,
                     onChecked = { toggleTool("android_open_settings", it) }
                 )
