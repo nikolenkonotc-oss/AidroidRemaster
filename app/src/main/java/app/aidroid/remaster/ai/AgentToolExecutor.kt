@@ -146,7 +146,8 @@ class AgentToolExecutor(
     private fun searchTavily(query: String, freshness: String, key: String): List<WebSearchHit> {
         val payload = buildJsonObject {
             put("query", query)
-            put("search_depth", "basic")
+            put("search_depth", "advanced")
+            put("chunks_per_source", 2)
             put("max_results", 8)
             put("topic", if (freshness == "any") "general" else "news")
             put("include_answer", false)
@@ -495,7 +496,9 @@ class AgentToolExecutor(
                     val root = json.parseToJsonElement(body) as? JsonObject
                     val error = root?.get("error")
                     val errorObject = error as? JsonObject
+                    val detailObject = root?.get("detail") as? JsonObject
                     val message = ((errorObject?.get("message") as? JsonPrimitive)?.contentOrNull)
+                        ?: ((detailObject?.get("error") as? JsonPrimitive)?.contentOrNull)
                         ?: ((errorObject?.get("detail") as? JsonPrimitive)?.contentOrNull)
                         ?: ((error as? JsonPrimitive)?.contentOrNull)
                         ?: ((root?.get("message") as? JsonPrimitive)?.contentOrNull)
