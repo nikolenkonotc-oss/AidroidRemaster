@@ -328,6 +328,20 @@ private fun ProviderEditorDialog(
 @Composable
 fun AgentWorkspaceScreen(manager: ProviderManager) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var providers by remember { mutableStateOf(manager.providers()) }
+    var preferences by remember { mutableStateOf(manager.agentPreferences()) }
+    var providerMenu by remember { mutableStateOf(false) }
+    var imageProviderMenu by remember { mutableStateOf(false) }
+    var savedNotice by remember { mutableStateOf<String?>(null) }
+    var tavilyKey by remember { mutableStateOf(manager.toolCredential("tavily_search").orEmpty()) }
+    var tavilyKeyVisible by remember { mutableStateOf(false) }
+    var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
+    var braveKeyVisible by remember { mutableStateOf(false) }
+    var imageGenerationModel by remember { mutableStateOf(preferences.imageGenerationModel) }
+    var imageEditModel by remember { mutableStateOf(preferences.imageEditModel) }
+    var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
+    var endpointError by remember { mutableStateOf<String?>(null) }
+
     val fileTreePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -347,19 +361,6 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
             }
         }
     }
-    var providers by remember { mutableStateOf(manager.providers()) }
-    var preferences by remember { mutableStateOf(manager.agentPreferences()) }
-    var providerMenu by remember { mutableStateOf(false) }
-    var imageProviderMenu by remember { mutableStateOf(false) }
-    var savedNotice by remember { mutableStateOf<String?>(null) }
-    var tavilyKey by remember { mutableStateOf(manager.toolCredential("tavily_search").orEmpty()) }
-    var tavilyKeyVisible by remember { mutableStateOf(false) }
-    var braveKey by remember { mutableStateOf(manager.toolCredential("brave_search").orEmpty()) }
-    var braveKeyVisible by remember { mutableStateOf(false) }
-    var imageGenerationModel by remember { mutableStateOf(preferences.imageGenerationModel) }
-    var imageEditModel by remember { mutableStateOf(preferences.imageEditModel) }
-    var codeRunnerUrl by remember { mutableStateOf(preferences.codeRunnerUrl) }
-    var endpointError by remember { mutableStateOf<String?>(null) }
 
     fun update(next: AgentPreferences) {
         preferences = next
