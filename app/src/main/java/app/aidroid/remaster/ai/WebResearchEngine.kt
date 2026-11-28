@@ -66,13 +66,34 @@ class WebResearchEngine {
         .followSslRedirects(false)
         .build()
 
-    fun search(query: String, freshness: String = "any"): List<WebSearchHit> {
+    fun search(
+        query: String,
+        freshness: String = "any",
+        mwmblApiKey: String? = null
+    ): List<WebSearchHit> {
         AgentSafetyPolicy.validateSearchQuery(query)
-        require(query.isNotBlank() && query.length <= 600) { "Поисковый запрос должен содержать от 1 до 600 символов." }
+        require(query.isNotBlank() && query.length <= 600) {
+            "Поисковый запрос должен содержать от 1 до 600 символов."
+        }
 
         val found = linkedMapOf<String, WebSearchHit>()
         val errors = mutableListOf<String>()
 
+        // Mwmbl is the structured-JSON primary provider. Stop here when it gives
+        // a useful set: this avoids spending requests on HTML-scraping fallbacks.
+        val mwmblAttempt = runCatching { searchMwmbl(query, mwmblApiKey) }
+        val mwmblHits = mwmblAttempt.getOrElse {
+            errors += "Mwmbl: ${it.message}"
+            emptyList()
+        }
+        mwmblHits.forEach { found.putIfAbsent(it.url, it) }
+        if (mwmblHits.isEmpty() && mwmblAttempt.isSuccess) {
+            errors += "Mwmbl: API не вернул подходящих веб-результатов"
+        }
+        if (found.size >= 5) return found.values.take(8)
+
+        // Legacy providers are fallback-only. They are intentionally not queried
+        // when the primary API already returned enough usable results.
         runCatching { searchDuckDuckGo(query, freshness) }
             .onSuccess { hits ->
                 hits.forEach { found.putIfAbsent(it.url, it) }
@@ -89,22 +110,17 @@ class WebResearchEngine {
                 .onFailure { errors += "Mojeek: ${it.message}" }
         }
 
-        // Google News RSS is an independent, keyless feed. It is intentionally a
-        // supplement for thin search results, not a replacement for general web search.
-        val newsHits = if (found.size < 5 || freshness != "any") {
+        val needsSupplement = found.size < 5 || freshness != "any"
+        val newsHits = if (needsSupplement) {
             runCatching { searchGoogleNews(query, freshness) }
                 .onFailure { errors += "Google News RSS: ${it.message}" }
                 .getOrElse { emptyList() }
-        } else {
-            emptyList()
-        }
+        } else emptyList()
         newsHits.forEach { found.putIfAbsent(it.url, it) }
-        if (newsHits.isEmpty() && (found.size < 5 || freshness != "any")) {
+        if (newsHits.isEmpty() && needsSupplement) {
             errors += "Google News RSS: лента не вернула подходящих материалов"
         }
 
-        // MediaWiki's documented Action API provides a keyless encyclopedia fallback.
-        // It complements news search but is not presented as a source of current events.
         if (found.size < 5 && freshness == "any") {
             runCatching { searchWikipedia(query) }
                 .onSuccess { hits ->
@@ -115,12 +131,44 @@ class WebResearchEngine {
         }
 
         if (found.isEmpty()) {
-            val detail = errors.take(3).joinToString("; ").ifBlank { "источники не вернули результатов" }
-            throw IOException("Поиск не получил результатов. Это может быть DNS/сеть, CAPTCHA или ограничение источника. Подробности: $detail")
+            val detail = errors.take(4).joinToString("; ").ifBlank { "источники не вернули результатов" }
+            throw IOException("Поиск не получил результатов. Возможны ограничения API, DNS или CAPTCHA. Подробности: $detail")
         }
-        // For explicitly fresh queries, place dated news results ahead of general web hits.
         val ordered = if (freshness != "any") newsHits + found.values else found.values.toList()
         return ordered.distinctBy { it.url }.take(8)
+    }
+
+    @Synchronized
+    private fun searchMwmbl(query: String, apiKey: String?): List<WebSearchHit> {
+        val now = System.currentTimeMillis()
+        val waitMillis = (1_050L - (now - lastMwmblRequestAt)).coerceAtLeast(0L)
+        if (waitMillis > 0) Thread.sleep(waitMillis)
+        lastMwmblRequestAt = System.currentTimeMillis()
+
+        val url = "https://api.mwmbl.org/api/v2/search/?q=" +
+            URLEncoder.encode(query, Charsets.UTF_8.name())
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .apply { if (!apiKey.isNullOrBlank()) header("X-API-Key", apiKey.trim()) }
+            .get()
+            .build()
+
+        searchClient.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (body.length > MAX_SEARCH_BYTES) throw IOException("ответ Mwmbl превышает лимит размера")
+            if (response.code == 429) {
+                throw IOException("HTTP 429: Mwmbl ограничил частоту запросов или исчерпан месячный лимит")
+            }
+            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+            if (body.isBlank()) throw IOException("Mwmbl вернул пустой ответ")
+            return WebHtmlParser.parseMwmblSearch(body)
+        }
+    }
+
+    private companion object {
+        @Volatile private var lastMwmblRequestAt: Long = 0L
     }
 
     fun openPage(input: String): WebPageContent {
@@ -514,6 +562,28 @@ private fun isPublicAddress(address: InetAddress): Boolean {
 }
 
 internal object WebHtmlParser {
+    fun parseMwmblSearch(jsonBody: String, limit: Int = 8): List<WebSearchHit> {
+        val root = Json.parseToJsonElement(jsonBody).jsonObject
+        val rows = root["results"]?.jsonArray.orEmpty()
+        val hits = linkedMapOf<String, WebSearchHit>()
+        rows.forEach { item ->
+            val row = item.jsonObject
+            fun textField(name: String): String = row[name]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val title = textField("title").trim()
+            val url = textField("url").trim()
+            val snippet = (textField("content").ifBlank { textField("extract") })
+                .replace(Regex("""<[^>]+>"""), " ")
+                .replace(Regex("""\\s+"""), " ")
+                .trim()
+            val engine = textField("engine").ifBlank { "mwmbl" }
+            if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
+            val source = if (engine.equals("mwmbl", ignoreCase = true)) "Mwmbl" else "Mwmbl ($engine)"
+            hits.putIfAbsent(url, WebSearchHit(title.take(300), url, snippet.take(900), source))
+            if (hits.size >= limit) return hits.values.toList()
+        }
+        return hits.values.toList()
+    }
+
     fun parseDuckDuckGo(html: String, limit: Int = 8): List<WebSearchHit> =
         parseResultAnchors(html, "result__a", "result__snippet", limit, "DuckDuckGo")
 
