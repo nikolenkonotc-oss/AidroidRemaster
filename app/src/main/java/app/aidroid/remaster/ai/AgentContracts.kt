@@ -55,7 +55,9 @@ data class AgentPreferences(
     val imageGenerationModel: String = "gpt-image-2.6-flare",
     val imageEditModel: String = "gpt-image-2.6-sunburst",
     // Persistent, user-controlled permission for allowlisted low-risk Android actions.
-    val androidAutonomyEnabled: Boolean = false
+    val androidAutonomyEnabled: Boolean = false,
+    // User-selected SAF directory trees; persisted locally and never synced to cloud.
+    val androidFileRoots: List<String> = emptyList()
 )
 
 data class LlmImageAttachment(
@@ -107,7 +109,9 @@ data class AvailableModel(
 
 enum class AgentActionType {
     CODE_EXECUTION,
-    ANDROID_CONTROL
+    ANDROID_CONTROL,
+    FILE_OPERATION,
+    TERMUX_COMMAND
 }
 
 data class AgentExternalAction(
