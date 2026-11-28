@@ -314,9 +314,9 @@ class AgentRunner(
         "termux_run_command" -> {
             val command = arguments["command"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (command.trimStart().startsWith("su ", ignoreCase = true)) {
-                "Выполняю root-команду через KernelSU…\\n$command"
+                "Выполняю root-команду через KernelSU…\n$command"
             } else {
-                "Выполняю команду Termux…\\n$command"
+                "Выполняю команду Termux…\n$command"
             }
         }
         else -> "Выполняю действие…"
