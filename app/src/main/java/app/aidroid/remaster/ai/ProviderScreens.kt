@@ -474,24 +474,50 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     letterSpacing = 1.1.sp
                 )
                 ToolPreferenceRow(
+                    title = "Постоянное разрешение на управление",
+                    description = "Разрешить агенту самостоятельно выполнять перечисленные ниже низкорисковые действия без отдельного окна каждый раз. Можно отозвать здесь в любой момент.",
+                    checked = preferences.androidAutonomyEnabled,
+                    onChecked = { update(preferences.copy(androidAutonomyEnabled = it)) }
+                )
+                Text(
+                    "Разрешение действует только внутри Aidroid и не даёт root-доступ. Android всё равно сам запросит специальные разрешения, если они нужны.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
                     title = "Состояние устройства",
-                    description = "Модель телефона, версия Android, уровень и состояние батареи",
+                    description = "Модель, Android, батарея, яркость, тайм-аут, автоповорот и уровни громкости",
                     checked = "android_device_status" in preferences.enabledTools,
                     onChecked = { toggleTool("android_device_status", it) }
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
                     title = "Открытие системных настроек",
-                    description = "Открывать разрешённые разделы Android после подтверждения",
+                    description = "25 разрешённых системных разделов: сеть, экран, звук, приложения, уведомления, безопасность и другие",
                     checked = "android_open_settings" in preferences.enabledTools,
                     onChecked = { toggleTool("android_open_settings", it) }
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 ToolPreferenceRow(
-                    title = "Громкость мультимедиа",
-                    description = "Устанавливать громкость звука в процентах после подтверждения",
+                    title = "Быстрые системные панели",
+                    description = "Открывать панели Wi-Fi, подключений к интернету, громкости и NFC",
+                    checked = "android_open_settings_panel" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_open_settings_panel", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Управление громкостью",
+                    description = "Мультимедиа, звонок, будильник, уведомления и системные звуки",
                     checked = "android_set_media_volume" in preferences.enabledTools,
                     onChecked = { toggleTool("android_set_media_volume", it) }
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Параметры экрана",
+                    description = "Яркость, тайм-аут отключения экрана, автояркость и автоповорот",
+                    checked = "android_set_display_parameter" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_set_display_parameter", it) }
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 Text(
@@ -651,7 +677,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Управление Android включается отдельно. Открытие настроек и изменение громкости требуют подтверждения; системные переключатели пользователь меняет самостоятельно.",
+                    "Постоянное разрешение отключено по умолчанию. При его включении агент может без повторных окон открывать разрешённые разделы и панели, менять уровни громкости и параметры экрана. Wi-Fi и Bluetooth переключаются внутри системной панели Android; для записи яркости и тайм-аута требуется отдельный специальный доступ WRITE_SETTINGS.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
