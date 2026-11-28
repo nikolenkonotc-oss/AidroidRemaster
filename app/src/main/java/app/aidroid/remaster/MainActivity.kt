@@ -528,7 +528,10 @@ private fun AgentActionApprovalDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    val confirmLabel = "Запустить код"
+    val confirmLabel = when (action.type) {
+        AgentActionType.CODE_EXECUTION -> "Запустить код"
+        AgentActionType.ANDROID_CONTROL -> "Разрешить действие"
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(action.title, fontWeight = FontWeight.Bold) },
@@ -537,22 +540,32 @@ private fun AgentActionApprovalDialog(
                 Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                if (action.type == AgentActionType.CODE_EXECUTION) {
-                    Text("Язык: ${action.subject.uppercase(Locale.getDefault())}")
-                    Text("Код будет отправлен только на настроенный сервер Piston после твоего подтверждения.")
-                    SelectionContainer {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                action.body,
-                                modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
+                when (action.type) {
+                    AgentActionType.CODE_EXECUTION -> {
+                        Text("Язык: ${action.subject.uppercase(Locale.getDefault())}")
+                        Text("Код будет отправлен только на настроенный сервер Piston после твоего подтверждения.")
+                        SelectionContainer {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    action.body,
+                                    modifier = Modifier.padding(12.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                            }
                         }
+                    }
+                    AgentActionType.ANDROID_CONTROL -> {
+                        val explanation = when (action.subject) {
+                            "open_settings" -> "Aidroid откроет системный раздел «${action.body}». Изменения параметров ты выполняешь самостоятельно в Android."
+                            "set_media_volume" -> "Aidroid установит громкость мультимедиа примерно на ${action.body}%. Звонки и будильники не затрагиваются."
+                            else -> "Aidroid выполнит локальное действие на устройстве."
+                        }
+                        Text(explanation)
                     }
                 }
                 Text(
