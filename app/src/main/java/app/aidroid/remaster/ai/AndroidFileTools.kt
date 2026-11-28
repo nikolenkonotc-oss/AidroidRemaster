@@ -30,29 +30,26 @@ object AndroidFileTools {
                 description = "Просматривает содержимое выбранной пользователем папки и её подпапок. path — относительный путь внутри root_index, пустая строка означает корень. $rootDescription",
                 parameters = objectSchema(
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
-                    "path" to stringSchema("Относительный путь папки внутри выбранного корня.")
+                    "path" to stringSchema("Относительный путь папки внутри выбранного корня."),
+                    required = listOf("root_index")
                 ),
-                required = listOf("root_index")
-            ),
             LlmTool(
                 name = "android_file_read",
                 description = "Читает небольшой текстовый файл (до 64 КБ) из выбранной пользователем папки. Не использовать для чтения секретов без прямой просьбы пользователя. $rootDescription",
                 parameters = objectSchema(
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
-                    "path" to stringSchema("Относительный путь текстового файла.")
+                    "path" to stringSchema("Относительный путь текстового файла."),
+                    required = listOf("root_index", "path")
                 ),
-                required = listOf("root_index", "path")
-            ),
             LlmTool(
                 name = "android_file_create_folder",
                 description = "Создаёт одну новую папку внутри выбранного пользователем корня. Изменение требует отдельного подтверждения. $rootDescription",
                 parameters = objectSchema(
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
                     "parent" to stringSchema("Относительный путь существующей родительской папки; пустая строка означает корень."),
-                    "name" to stringSchema("Имя новой папки без символов / и \\.")
+                    "name" to stringSchema("Имя новой папки без символов / и \\."),
+                    required = listOf("root_index", "name")
                 ),
-                required = listOf("root_index", "name")
-            ),
             LlmTool(
                 name = "android_file_copy",
                 description = "Копирует один файл в другую папку внутри того же выбранного корня. Папки целиком не копируются; перезапись существующего файла запрещена. Операция требует подтверждения. $rootDescription",
@@ -60,10 +57,9 @@ object AndroidFileTools {
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
                     "source" to stringSchema("Относительный путь исходного файла."),
                     "destination" to stringSchema("Относительный путь папки назначения; пустая строка означает корень."),
-                    "new_name" to stringSchema("Необязательное новое имя копии.")
+                    "new_name" to stringSchema("Необязательное новое имя копии."),
+                    required = listOf("root_index", "source", "destination")
                 ),
-                required = listOf("root_index", "source", "destination")
-            ),
             LlmTool(
                 name = "android_file_move",
                 description = "Перемещает один файл в другую папку внутри того же выбранного корня. Папки целиком не перемещаются; перезапись запрещена. Сначала копирует, затем удаляет исходник. Операция требует подтверждения. $rootDescription",
@@ -71,19 +67,17 @@ object AndroidFileTools {
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
                     "source" to stringSchema("Относительный путь исходного файла."),
                     "destination" to stringSchema("Относительный путь папки назначения; пустая строка означает корень."),
-                    "new_name" to stringSchema("Необязательное новое имя файла.")
+                    "new_name" to stringSchema("Необязательное новое имя файла."),
+                    required = listOf("root_index", "source", "destination")
                 ),
-                required = listOf("root_index", "source", "destination")
-            ),
             LlmTool(
                 name = "android_file_delete",
                 description = "Удаляет один файл внутри выбранного корня. Папки и массовое удаление не поддерживаются. Всегда требуется отдельное подтверждение с показом точного пути. $rootDescription",
                 parameters = objectSchema(
                     "root_index" to integerSchema("Индекс доступной корневой папки, начиная с 0."),
-                    "path" to stringSchema("Точный относительный путь файла для удаления.")
-                ),
-                required = listOf("root_index", "path")
-            )
+                    "path" to stringSchema("Точный относительный путь файла для удаления."),
+                    required = listOf("root_index", "path")
+                )
         )
     }
 
@@ -341,12 +335,14 @@ object AndroidFileTools {
     }
 
     private fun objectSchema(
-        vararg fields: Pair<String, JsonObject>
+        vararg fields: Pair<String, JsonObject>,
+        required: List<String>
     ) = buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
             fields.forEach { (name, schema) -> put(name, schema) }
         }
+        putJsonArray("required") { required.forEach { add(JsonPrimitive(it)) } }
         put("additionalProperties", false)
     }
 
