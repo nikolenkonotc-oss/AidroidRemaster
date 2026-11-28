@@ -1,7 +1,6 @@
 package app.aidroid.remaster.ai
 
 import okhttp3.Dns
-import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.json.Json
@@ -18,8 +17,6 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.net.UnknownHostException
-import java.net.URLDecoder
-import java.net.URLEncoder
 import java.nio.charset.Charset
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -65,107 +62,6 @@ class WebResearchEngine {
         .followRedirects(false)
         .followSslRedirects(false)
         .build()
-
-    fun search(
-        query: String,
-        freshness: String = "any",
-        mwmblApiKey: String? = null
-    ): List<WebSearchHit> {
-        AgentSafetyPolicy.validateSearchQuery(query)
-        require(query.isNotBlank() && query.length <= 600) {
-            "Поисковый запрос должен содержать от 1 до 600 символов."
-        }
-
-        val found = linkedMapOf<String, WebSearchHit>()
-        val errors = mutableListOf<String>()
-
-        // Mwmbl is the structured-JSON primary provider. Stop here when it gives
-        // a useful set: this avoids spending requests on HTML-scraping fallbacks.
-        val mwmblAttempt = runCatching { searchMwmbl(query, mwmblApiKey) }
-        val mwmblHits = mwmblAttempt.getOrElse {
-            errors += "Mwmbl: ${it.message}"
-            emptyList()
-        }
-        mwmblHits.forEach { found.putIfAbsent(it.url, it) }
-        if (mwmblHits.isEmpty() && mwmblAttempt.isSuccess) {
-            errors += "Mwmbl: API не вернул подходящих веб-результатов"
-        }
-        if (found.size >= 5 && freshness == "any") return found.values.take(8)
-
-        // Legacy providers are fallback-only. They are intentionally not queried
-        // when the primary API already returned enough usable results.
-        runCatching { searchDuckDuckGo(query, freshness) }
-            .onSuccess { hits ->
-                hits.forEach { found.putIfAbsent(it.url, it) }
-                if (hits.isEmpty()) errors += "DuckDuckGo: страница не содержала распознанных результатов"
-            }
-            .onFailure { errors += "DuckDuckGo: ${it.message}" }
-
-        if (found.size < 5) {
-            runCatching { searchMojeek(query) }
-                .onSuccess { hits ->
-                    hits.forEach { found.putIfAbsent(it.url, it) }
-                    if (hits.isEmpty()) errors += "Mojeek: страница не содержала распознанных результатов"
-                }
-                .onFailure { errors += "Mojeek: ${it.message}" }
-        }
-
-        val needsSupplement = found.size < 5 || freshness != "any"
-        val newsHits = if (needsSupplement) {
-            runCatching { searchGoogleNews(query, freshness) }
-                .onFailure { errors += "Google News RSS: ${it.message}" }
-                .getOrElse { emptyList() }
-        } else emptyList()
-        newsHits.forEach { found.putIfAbsent(it.url, it) }
-        if (newsHits.isEmpty() && needsSupplement) {
-            errors += "Google News RSS: лента не вернула подходящих материалов"
-        }
-
-        if (found.size < 5 && freshness == "any") {
-            runCatching { searchWikipedia(query) }
-                .onSuccess { hits ->
-                    hits.forEach { found.putIfAbsent(it.url, it) }
-                    if (hits.isEmpty()) errors += "Wikipedia: справочный поиск не нашёл страниц"
-                }
-                .onFailure { errors += "Wikipedia: ${it.message}" }
-        }
-
-        if (found.isEmpty()) {
-            val detail = errors.take(4).joinToString("; ").ifBlank { "источники не вернули результатов" }
-            throw IOException("Поиск не получил результатов. Возможны ограничения API, DNS или CAPTCHA. Подробности: $detail")
-        }
-        val ordered = if (freshness != "any") newsHits + found.values else found.values.toList()
-        return ordered.distinctBy { it.url }.take(8)
-    }
-
-    @Synchronized
-    private fun searchMwmbl(query: String, apiKey: String?): List<WebSearchHit> {
-        val now = System.currentTimeMillis()
-        val waitMillis = (1_050L - (now - lastMwmblRequestAt)).coerceAtLeast(0L)
-        if (waitMillis > 0) Thread.sleep(waitMillis)
-        lastMwmblRequestAt = System.currentTimeMillis()
-
-        val url = "https://api.mwmbl.org/api/v2/search/?q=" +
-            URLEncoder.encode(query, Charsets.UTF_8.name())
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .apply { if (!apiKey.isNullOrBlank()) header("X-API-Key", apiKey.trim()) }
-            .get()
-            .build()
-
-        searchClient.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (body.length > MAX_SEARCH_BYTES) throw IOException("ответ Mwmbl превышает лимит размера")
-            if (response.code == 429) {
-                throw IOException("HTTP 429: Mwmbl ограничил частоту запросов или исчерпан месячный лимит")
-            }
-            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-            if (body.isBlank()) throw IOException("Mwmbl вернул пустой ответ")
-            return WebHtmlParser.parseMwmblSearch(body)
-        }
-    }
 
     fun openPage(input: String): WebPageContent {
         require(input.length <= 2_048) { "Ссылка слишком длинная." }
@@ -238,120 +134,7 @@ class WebResearchEngine {
         throw IOException("Не удалось открыть страницу.")
     }
 
-    private fun searchDuckDuckGo(query: String, freshness: String): List<WebSearchHit> {
-        val form = FormBody.Builder()
-            .add("q", query)
-            .add("kp", "1")
-            .apply {
-                val range = when (freshness) {
-                    "day" -> "d"
-                    "week" -> "w"
-                    "month" -> "m"
-                    "year" -> "y"
-                    else -> ""
-                }
-                if (range.isNotBlank()) add("df", range)
-            }
-            .build()
-        val request = Request.Builder()
-            .url("https://html.duckduckgo.com/html/")
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "text/html,application/xhtml+xml")
-            .header("Accept-Language", "en-US,en;q=0.8,ru;q=0.6")
-            .post(form)
-            .build()
-        val html = executeSearchHtml(request)
-        if (html.contains("anomaly.js", ignoreCase = true) ||
-            html.contains("select all squares", ignoreCase = true) ||
-            html.contains("unfortunately, bots use", ignoreCase = true)
-        ) throw IOException("поисковик показал проверку браузера")
-        return WebHtmlParser.parseDuckDuckGo(html)
-    }
-
-    private fun searchMojeek(query: String): List<WebSearchHit> {
-        val url = "https://www.mojeek.com/search?q=" + URLEncoder.encode(query, Charsets.UTF_8.name())
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "text/html,application/xhtml+xml")
-            .header("Accept-Language", "en-US,en;q=0.8,ru;q=0.6")
-            .get()
-            .build()
-        val html = executeSearchHtml(request)
-        return WebHtmlParser.parseMojeek(html)
-    }
-
-    private fun searchWikipedia(query: String): List<WebSearchHit> {
-        val language = Locale.getDefault().language
-            .takeIf { it.matches(Regex("[a-z]{2,3}")) }
-            ?: "en"
-        val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
-        val url = "https://$language.wikipedia.org/w/api.php?action=query&list=search" +
-            "&srsearch=$encodedQuery&format=json&utf8=1&srlimit=6"
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "AidroidRemaster/0.2 (Android; MediaWiki search client)")
-            .header("Accept", "application/json")
-            .get()
-            .build()
-        searchClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-            val body = response.body?.string().orEmpty()
-            if (body.length > MAX_SEARCH_BYTES) throw IOException("ответ слишком большой")
-            return WebHtmlParser.parseWikipediaSearch(body, language)
-        }
-    }
-
-    private fun searchGoogleNews(query: String, freshness: String): List<WebSearchHit> {
-        val locale = Locale.getDefault()
-        val language = locale.language.ifBlank { "en" }
-        val country = locale.country.ifBlank { "US" }.uppercase(Locale.ROOT)
-        val languageTag = locale.toLanguageTag().takeIf { it.isNotBlank() && it != "und" }
-            ?: "$language-$country"
-        val freshnessFilter = when (freshness) {
-            "day" -> " when:1d"
-            "week" -> " when:7d"
-            "month" -> " when:30d"
-            "year" -> " when:1y"
-            else -> ""
-        }
-        val encodedQuery = URLEncoder.encode(query + freshnessFilter, Charsets.UTF_8.name())
-        val url = "https://news.google.com/rss/search?q=$encodedQuery" +
-            "&hl=${URLEncoder.encode(languageTag, Charsets.UTF_8.name())}" +
-            "&gl=$country&ceid=$country:${URLEncoder.encode(language, Charsets.UTF_8.name())}"
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/rss+xml,application/xml,text/xml")
-            .header("Accept-Language", "${language},en;q=0.8")
-            .get()
-            .build()
-        return WebHtmlParser.parseGoogleNewsRss(executeSearchHtml(request))
-    }
-
-    private fun executeSearchHtml(request: Request): String {
-        searchClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-            val body = response.body ?: throw IOException("пустой ответ")
-            if (body.contentLength() > MAX_SEARCH_BYTES) throw IOException("ответ слишком большой")
-            val bytes = body.byteStream().use { input ->
-                val output = ByteArrayOutputStream()
-                val buffer = ByteArray(8_192)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (output.size() + count > MAX_SEARCH_BYTES) throw IOException("ответ слишком большой")
-                    output.write(buffer, 0, count)
-                }
-                output.toByteArray()
-            }
-            val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
-            return String(bytes, charset)
-        }
-    }
-
     companion object {
-        @Volatile private var lastMwmblRequestAt: Long = 0L
         private const val MAX_REDIRECTS = 4
         private const val MAX_PAGE_BYTES = 1_500_000L
         private const val MAX_SEARCH_BYTES = 1_000_000L
@@ -559,114 +342,18 @@ private fun isPublicAddress(address: InetAddress): Boolean {
 }
 
 internal object WebHtmlParser {
-    fun parseMwmblSearch(jsonBody: String, limit: Int = 8): List<WebSearchHit> {
-        val root = Json.parseToJsonElement(jsonBody).jsonObject
-        val rows = root["results"]?.jsonArray.orEmpty()
-        val hits = linkedMapOf<String, WebSearchHit>()
-        rows.forEach { item ->
-            val row = item.jsonObject
-            fun textField(name: String): String = row[name]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val title = textField("title").trim()
-            val url = textField("url").trim()
-            val snippet = (textField("content").ifBlank { textField("extract") })
-                .replace(Regex("""<[^>]+>"""), " ")
-                .replace(Regex("""\s+"""), " ")
-                .trim()
-            val engine = textField("engine").ifBlank { "mwmbl" }
-            if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
-            val source = if (engine.equals("mwmbl", ignoreCase = true)) "Mwmbl" else "Mwmbl ($engine)"
-            hits.putIfAbsent(url, WebSearchHit(title.take(300), url, snippet.take(900), source))
-            if (hits.size >= limit) return hits.values.toList()
-        }
-        return hits.values.toList()
-    }
-
-    fun parseDuckDuckGo(html: String, limit: Int = 8): List<WebSearchHit> =
-        parseResultAnchors(html, "result__a", "result__snippet", limit, "DuckDuckGo")
-
-    fun parseMojeek(html: String, limit: Int = 8): List<WebSearchHit> =
-        parseResultAnchors(html, "ob", "s", limit, "Mojeek")
-
-    fun parseWikipediaSearch(jsonBody: String, language: String, limit: Int = 8): List<WebSearchHit> {
-        val root = Json.parseToJsonElement(jsonBody).jsonObject
-        val rows = root["query"]?.jsonObject?.get("search")?.jsonArray.orEmpty()
-        return rows.mapNotNull { item ->
-            val row = item.jsonObject
-            val title = row["title"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-            val pageId = row["pageid"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-                ?: return@mapNotNull null
-            if (title.isBlank()) return@mapNotNull null
-            val snippet = stripHtml(row["snippet"]?.jsonPrimitive?.contentOrNull.orEmpty()).take(900)
-            val url = "https://$language.wikipedia.org/?curid=$pageId"
-            WebSearchHit(title.take(300), url, snippet, "Wikipedia ($language)")
-        }.take(limit)
-    }
-
-    fun parseGoogleNewsRss(xml: String, limit: Int = 8): List<WebSearchHit> {
-        val itemPattern = Regex("""(?is)<item\b[^>]*>(.*?)</item\s*>""")
-        val results = linkedMapOf<String, WebSearchHit>()
-        itemPattern.findAll(xml).forEach { match ->
-            val item = match.groupValues[1]
-            fun tag(name: String): String {
-                val raw = Regex("""(?is)<$name\b[^>]*>(.*?)</$name\s*>""")
-                    .find(item)?.groupValues?.get(1).orEmpty().trim()
-                val unwrapped = raw.removePrefix("<![CDATA[").removeSuffix("]]>").trim()
-                return unwrapped
-            }
-            val title = WebHtmlParser.decodeFeedText(tag("title")).take(300)
-            val url = WebHtmlParser.decodeFeedText(tag("link")).trim()
-            val snippet = WebHtmlParser.stripFeedHtml(WebHtmlParser.decodeFeedText(tag("description"))).take(900)
-            val publishedAt = WebHtmlParser.decodeFeedText(tag("pubDate")).take(100)
-            if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@forEach
-            results.putIfAbsent(url, WebSearchHit(title, url, snippet, "Google News", publishedAt))
-            if (results.size >= limit) return results.values.toList()
-        }
-        return results.values.toList()
-    }
-
-    private fun parseResultAnchors(
-        html: String,
-        linkClass: String,
-        snippetClass: String,
-        limit: Int,
-        source: String
-    ): List<WebSearchHit> {
-        val anchors = Regex("""(?is)<a\b([^>]*)>(.*?)</a>""").findAll(html).toList()
-        val hits = linkedMapOf<String, WebSearchHit>()
-        anchors.forEachIndexed { index, anchor ->
-            val attributes = anchor.groupValues[1]
-            val classes = attribute(attributes, "class").orEmpty().split(Regex("""\s+"""))
-            if (linkClass !in classes) return@forEachIndexed
-            val rawHref = attribute(attributes, "href").orEmpty()
-            val target = if (linkClass == "result__a") unwrapDuckDuckGo(rawHref) else decodeHtml(rawHref)
-            if (!WebResearchEngine.isSafeUrlSyntax(target)) return@forEachIndexed
-            val title = stripHtml(anchor.groupValues[2]).take(300)
-            if (title.isBlank()) return@forEachIndexed
-            val nextResultStart = anchors.drop(index + 1).firstOrNull { next ->
-                attribute(next.groupValues[1], "class").orEmpty().split(Regex("""\s+""")).contains(linkClass)
-            }?.range?.first ?: html.length
-            val tailEnd = minOf(nextResultStart, anchor.range.last + 2_400, html.length)
-            val tail = html.substring((anchor.range.last + 1).coerceAtMost(html.length), tailEnd.coerceAtLeast(anchor.range.last + 1))
-            val snippet = extractClassText(tail, snippetClass).take(900)
-            hits.putIfAbsent(target, WebSearchHit(title, target, snippet, source))
-            if (hits.size >= limit) return hits.values.toList()
-        }
-        return hits.values.toList()
-    }
-
     fun extractPage(html: String): Pair<String, String> {
-        val title = Regex("""(?is)<title\b[^>]*>(.*?)</title>""")
+        val title = Regex("""(?is)<title\\b[^>]*>(.*?)</title>""")
             .find(html)?.groupValues?.get(1)?.let(::stripHtml).orEmpty().take(300)
 
         val source = listOf("article", "main", "body").firstNotNullOfOrNull { tag ->
-            Regex("""(?is)<${tag}\b[^>]*>(.*?)</${tag}\s*>""")
-                .find(html)?.groupValues?.get(1)
+            Regex("""(?is)<${tag}\\b[^>]*>(.*?)</${tag}\\s*>""").find(html)?.groupValues?.get(1)
         } ?: html
         return title to stripHtml(source)
     }
 
     fun extractDescription(html: String): String {
-        val metas = Regex("""(?is)<meta\b([^>]*)>""").findAll(html)
+        val metas = Regex("""(?is)<meta\\b([^>]*)>""").findAll(html)
         val match = metas.firstOrNull {
             val attrs = it.groupValues[1]
             attribute(attrs, "name").equals("description", ignoreCase = true) ||
@@ -676,54 +363,35 @@ internal object WebHtmlParser {
     }
 
     fun normalizePlainText(input: String): String =
-        input.replace("\u0000", "").replace(Regex("""[ \t]{2,}"""), " ")
-            .replace(Regex("""\s+([,.;:!?])"""), "$1")
-            .replace(Regex("""\n{3,}"""), "\n\n").trim()
-
-    private fun extractClassText(source: String, token: String): String {
-        val elements = Regex("""(?is)<([a-z0-9]+)\b([^>]*)>(.*?)</\1\s*>""")
-        val element = elements.findAll(source).firstOrNull { match ->
-            attribute(match.groupValues[2], "class").orEmpty().split(Regex("""\s+""")).contains(token)
-        } ?: return ""
-        return stripHtml(element.groupValues[3])
-    }
+        input.replace("\\u0000", "").replace(Regex("""[ \\t]{2,}"""), " ")
+            .replace(Regex("""\\s+([,.;:!?])"""), "$1")
+            .replace(Regex("""\\n{3,}"""), "\\n\\n").trim()
 
     private fun attribute(attributes: String, name: String): String? {
-        val pattern = Regex("""(?is)\b${Regex.escape(name)}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
+        val pattern = Regex("""(?is)\\b${Regex.escape(name)}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))""")
         val match = pattern.find(attributes) ?: return null
         return (1..3).firstNotNullOfOrNull { match.groups[it]?.value }?.let(::decodeHtml)
-    }
-
-    private fun unwrapDuckDuckGo(href: String): String {
-        val decoded = decodeHtml(href)
-        val wrapped = Regex("""[?&]uddg=([^&]+)""").find(decoded)?.groupValues?.get(1) ?: return decoded
-        return runCatching { URLDecoder.decode(wrapped, Charsets.UTF_8.name()) }.getOrDefault(wrapped)
     }
 
     private fun stripHtml(input: String): String {
         var source = input
         source = Regex("""(?is)<!--.*?-->""").replace(source, " ")
-        source = Regex("""(?is)<(script|style|noscript|template|svg|iframe|nav|footer|header|aside|form|button)\b[^>]*>.*?</\1\s*>""")
+        source = Regex("""(?is)<(script|style|noscript|template|svg|iframe|nav|footer|header|aside|form|button)\\b[^>]*>.*?</\\1\\s*>""")
             .replace(source, " ")
-        source = Regex("""(?i)<br\s*/?>|</(p|div|section|article|main|h[1-6]|li|tr|blockquote)>""")
-            .replace(source, "\n")
-        source = Regex("""(?i)<li\b[^>]*>""").replace(source, "• ")
+        source = Regex("""(?i)<br\\s*/?>|</(p|div|section|article|main|h[1-6]|li|tr|blockquote)>""")
+            .replace(source, "\\n")
+        source = Regex("""(?i)<li\\b[^>]*>""").replace(source, "• ")
         source = Regex("""(?is)<[^>]+>""").replace(source, " ")
         return normalizePlainText(decodeHtml(source))
     }
 
-    internal fun decodeFeedText(input: String): String =
-        decodeHtml(input.removePrefix("<![CDATA[").removeSuffix("]]>").trim())
-
-    internal fun stripFeedHtml(input: String): String = stripHtml(input)
-
     private fun decodeHtml(input: String): String {
         val named = mapOf(
-            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"",
+            "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\\\"",
             "apos" to "'", "nbsp" to " ", "ndash" to "–", "mdash" to "—",
             "hellip" to "…", "copy" to "©", "reg" to "®"
         )
-        return Regex("""&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);""").replace(input) { match ->
+        return Regex("""&(#x[0-9a-fA-F]+|#\\d+|[a-zA-Z]+);""").replace(input) { match ->
             val entity = match.groupValues[1]
             when {
                 entity.startsWith("#x", true) -> runCatching {
