@@ -55,6 +55,7 @@ class AgentToolExecutor(
         val enabled = preferences.enabledTools.toSet()
         return buildList {
             addAll(BuiltInTools.definitions(enabled))
+            addAll(AndroidControlTools.definitions(enabled))
             if ("web_search" in enabled) {
                 add(webSearchTool())
                 add(webOpenTool())
@@ -77,6 +78,9 @@ class AgentToolExecutor(
     ): AgentToolResult {
         return when (name) {
             "calculator", "current_datetime" -> AgentToolResult(BuiltInTools.execute(name, arguments))
+            "android_device_status" -> AgentToolResult(AndroidControlTools.readDeviceStatus(appContext))
+            "android_open_settings", "android_set_media_volume" ->
+                AndroidControlTools.prepare(name, arguments, chatId)
             "web_search" -> searchWeb(arguments)
             "web_open" -> openWebPage(arguments)
             "generate_image" -> generateImage(arguments)
@@ -86,10 +90,11 @@ class AgentToolExecutor(
         }
     }
 
-    suspend fun confirmAction(action: AgentExternalAction): AgentToolResult {
-        require(action.type == AgentActionType.CODE_EXECUTION) { "Неизвестный тип подтверждаемого действия." }
-        return executeCode(action)
-    }
+    suspend fun confirmAction(action: AgentExternalAction): AgentToolResult =
+        when (action.type) {
+            AgentActionType.CODE_EXECUTION -> executeCode(action)
+            AgentActionType.ANDROID_CONTROL -> AndroidControlTools.execute(appContext, action)
+        }
 
     private suspend fun searchWeb(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
         val query = arguments.string("query")
