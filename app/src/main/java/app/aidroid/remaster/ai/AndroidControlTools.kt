@@ -182,7 +182,7 @@ object AndroidControlTools {
             "sound" -> Settings.ACTION_SOUND_SETTINGS
             "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
             "apps" -> Settings.ACTION_APPLICATION_SETTINGS
-            "notifications" -> Settings.ACTION_NOTIFICATION_SETTINGS
+            "notifications" -> "android.settings.NOTIFICATION_SETTINGS"
             "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
             "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
             "date_time" -> Settings.ACTION_DATE_SETTINGS
