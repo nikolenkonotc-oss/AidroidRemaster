@@ -8,17 +8,22 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Runs commands inside the user's Termux installation.
  *
- * Every command is passed as one argument to bash -lc. A small, conservative
- * read-only subset may run without an approval dialog. All other commands,
- * including su and adb, are displayed in full and require confirmation.
+ * Ordinary commands run through the Termux RUN_COMMAND bridge. Explicit su -c
+ * commands run in the Aidroid process so KernelSU grants root to Aidroid rather
+ * than to the separate Termux package. Every privileged or mutating action
+ * requires an in-app confirmation; destructive partition operations are blocked.
  */
 object TermuxCommandTools {
     private const val TERMUX_PACKAGE = "com.termux"
@@ -42,13 +47,13 @@ object TermuxCommandTools {
         return listOf(
             LlmTool(
                 name = "termux_run_command",
-                description = "Выполняет команду или shell-выражение через bash внутри Termux. Результат stdout, stderr и exit code возвращается в чат. Простые read-only команды из безопасного списка могут выполняться без подтверждения, если пользователь включил termux_auto_safe. Любые неизвестные или изменяющие команды требуют отдельного подтверждения Aidroid. Можно использовать su -c для root, если устройство действительно имеет root и настроен root-менеджер; можно использовать adb shell, если в Termux установлен android-tools и настроено ADB-подключение. Не утверждай, что root или ADB сработали, пока не получен результат.",
+                description = "Выполняет обычные команды через Termux и возвращает stdout, stderr и код завершения в чат. Команда вида su -c '...' запускается отдельно из Aidroid через root-разрешение KernelSU и всегда требует подтверждения Aidroid. ADB-команды запускаются через Termux и также требуют подтверждения. Без подтверждения выполняется только ограниченный read-only список, если включён termux_auto_safe. Простые зависания ограничены тайм-аутом; не утверждай успех без полученного результата.",
                 parameters = buildJsonObject {
                     put("type", "object")
                     putJsonObject("properties") {
                         putJsonObject("command") {
                             put("type", "string")
-                            put("description", "Полная команда Termux, например ls -la /storage/emulated/0, su -c 'id' или adb shell getprop.")
+                            put("description", "Команда, например pwd, ls -la /storage/emulated/0, su -c 'ls -la /system/etc' или adb shell getprop.")
                         }
                     }
                     putJsonArray("required") { add(JsonPrimitive("command")) }
@@ -130,12 +135,95 @@ object TermuxCommandTools {
 
     suspend fun executeCommand(context: Context, command: String): AgentToolResult {
         val clean = validateShellCommand(command)
+        if (clean.startsWith("su ", ignoreCase = true) ||
+            clean.equals("su", ignoreCase = true)
+        ) {
+            return executeRootCommand(clean)
+        }
         ensureTermuxInstalled(context)
         val result = executeTermux(
             context = context,
             arguments = listOf("-lc", clean)
         )
         return result.asToolResult(clean)
+    }
+
+    /**
+     * Extracts the payload from the explicit "su -c ..." form. The Android
+     * su binary is then launched by Aidroid itself, so KernelSU authorizes the
+     * Aidroid package instead of Termux.
+     */
+    internal fun rootCommandPayload(command: String): String {
+        val clean = command.trim()
+        val prefix = Regex("""(?is)^su\\s+(?:-c|--command)\\s+""")
+            .find(clean)
+            ?: throw IllegalArgumentException("Для root используй формат: su -c 'команда'.")
+        val payload = clean.substring(prefix.range.last + 1).trim()
+        val unquoted = if (
+            payload.length >= 2 &&
+            ((payload.first() == '\'' && payload.last() == '\'') ||
+                (payload.first() == '"' && payload.last() == '"'))
+        ) payload.substring(1, payload.length - 1) else payload
+        require(unquoted.isNotBlank()) { "После su -c не указана команда." }
+        return unquoted
+    }
+
+    private suspend fun executeRootCommand(command: String): AgentToolResult = withContext(Dispatchers.IO) {
+        val payload = rootCommandPayload(command)
+        val process = try {
+            ProcessBuilder("su", "-c", payload)
+                .redirectErrorStream(true)
+                .start()
+        } catch (error: Exception) {
+            throw IllegalStateException(
+                "Не удалось запустить su из Aidroid. Проверь, что root-доступ для Aidroid разрешён в KernelSU.",
+                error
+            )
+        }
+
+        val output = ByteArrayOutputStream()
+        val reader = Thread {
+            process.inputStream.use { stream ->
+                val buffer = ByteArray(4096)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    synchronized(output) {
+                        val remaining = MAX_OUTPUT_CHARS - output.size()
+                        if (remaining > 0) output.write(buffer, 0, minOf(count, remaining))
+                    }
+                }
+            }
+        }.apply {
+            isDaemon = true
+            name = "AidroidRootOutput"
+            start()
+        }
+
+        val finished = process.waitFor(ROOT_COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroy()
+            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
+            reader.join(1_000)
+            throw IllegalStateException(
+                "Root-команда не завершилась за $ROOT_COMMAND_TIMEOUT_SECONDS секунд. Процесс остановлен; проверь запрос KernelSU и повтори с более короткой командой."
+            )
+        }
+
+        reader.join(2_000)
+        val outputText = synchronized(output) { output.toString("UTF-8").trim() }
+        val exitCode = process.exitValue()
+        val result = buildString {
+            appendLine("Root через KernelSU: $command")
+            appendLine("Код завершения: $exitCode")
+            if (outputText.isNotBlank()) {
+                appendLine("Вывод:")
+                append(outputText)
+            } else {
+                append("Команда завершилась без вывода.")
+            }
+        }
+        AgentToolResult(result.takeLast(MAX_OUTPUT_CHARS))
     }
 
     private fun validateShellCommand(command: String): String {
@@ -241,12 +329,17 @@ object TermuxCommandTools {
             )
         }
 
-        val timeout = if (Regex("(^|\\s)(su|sudo)(\\s|$)").containsMatchIn(arguments.joinToString(" "))) 300_000L else 180_000L
+        val commandLine = arguments.joinToString(" ")
+        val timeout = if (Regex("(^|\\s)adb(\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(commandLine)) {
+            45_000L
+        } else {
+            TERMUX_COMMAND_TIMEOUT_MS
+        }
         return try {
             withTimeout(timeout) { deferred.await() }
         } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
             throw IllegalStateException(
-                "Termux не вернул результат за ${timeout / 1000} секунд. Если выполнялась su-команда, проверь всплывающий запрос root-менеджера; если adb — проверь ADB-подключение. Команда не считается успешно выполненной без результата.",
+                "Termux не вернул результат за ${timeout / 1000} секунд. Проверь allow-external-apps=true, разрешение RUN_COMMAND и работу Termux. Команда не считается успешно выполненной без результата.",
                 error
             )
         } finally {
@@ -254,6 +347,9 @@ object TermuxCommandTools {
             callback.cancel()
         }
     }
+
+    private const val TERMUX_COMMAND_TIMEOUT_MS = 15_000L
+    private const val ROOT_COMMAND_TIMEOUT_SECONDS = 30L
 
     private fun uniqueExecutionId(): Int {
         var id: Int
