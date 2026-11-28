@@ -122,19 +122,19 @@ class AgentToolExecutor(
 
         val sourceNames = results.map { it.source }.filter { it.isNotBlank() }.distinct()
         val summary = buildString {
-            append("Результаты веб-поиска по запросу: ").append(query).append("\\n")
-            append("Источник: ").append(sourceNames.joinToString(", ")).append("\\n")
+            append("Результаты веб-поиска по запросу: ").append(query).append("\n")
+            append("Источник: ").append(sourceNames.joinToString(", ")).append("\n")
             if (useBrave && tavilyAttempt?.isFailure == true) {
                 append("Tavily недоступен, использован Brave: ")
-                    .append(tavilyAttempt.exceptionOrNull()?.message?.take(250).orEmpty()).append("\\n")
+                    .append(tavilyAttempt.exceptionOrNull()?.message?.take(250).orEmpty()).append("\n")
             }
-            append("\\n")
+            append("\n")
             results.forEachIndexed { index, item ->
-                append(index + 1).append(". ").append(item.title).append("\\n")
-                append(item.url).append("\\n")
-                if (item.publishedAt.isNotBlank()) append("Дата публикации: ").append(item.publishedAt).append("\\n")
-                if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\\n")
-                append("\\n")
+                append(index + 1).append(". ").append(item.title).append("\n")
+                append(item.url).append("\n")
+                if (item.publishedAt.isNotBlank()) append("Дата публикации: ").append(item.publishedAt).append("\n")
+                if (item.snippet.isNotBlank()) append(item.snippet.take(900)).append("\n")
+                append("\n")
             }
             append("Открывай подходящие ссылки инструментом web_open и проверяй первоисточники. ")
             append("Используй только фактически полученные сведения; добавляй Markdown-ссылки на источники. ")
