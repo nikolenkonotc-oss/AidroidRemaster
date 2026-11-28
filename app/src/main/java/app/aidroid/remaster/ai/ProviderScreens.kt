@@ -327,6 +327,26 @@ private fun ProviderEditorDialog(
 
 @Composable
 fun AgentWorkspaceScreen(manager: ProviderManager) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fileTreePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+                val current = manager.agentPreferences()
+                manager.saveAgentPreferences(
+                    current.copy(androidFileRoots = (current.androidFileRoots + uri.toString()).distinct())
+                )
+                preferences = manager.agentPreferences()
+                savedNotice = "Доступ к папке сохранён"
+            }.onFailure { error ->
+                savedNotice = error.message ?: "Не удалось сохранить доступ к папке"
+            }
+        }
+    }
     var providers by remember { mutableStateOf(manager.providers()) }
     var preferences by remember { mutableStateOf(manager.agentPreferences()) }
     var providerMenu by remember { mutableStateOf(false) }
@@ -520,6 +540,56 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("android_set_display_parameter", it) }
                 )
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Доступ к файловой системе",
+                    description = "Просмотр папок, чтение текстовых файлов, создание папок, копирование, перемещение и удаление отдельных файлов",
+                    checked = "android_file_access" in preferences.enabledTools,
+                    onChecked = { toggleTool("android_file_access", it) }
+                )
+                Text(
+                    "Выбрано корневых папок: ${preferences.androidFileRoots.size}. Агент видит только папки, которые ты явно выбрал через системный экран Android.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(
+                    onClick = { fileTreePicker.launch(null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Text("Выбрать папку для доступа")
+                }
+                if (preferences.androidFileRoots.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            preferences.androidFileRoots.forEach { raw ->
+                                runCatching {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        android.net.Uri.parse(raw),
+                                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    )
+                                }
+                            }
+                            update(preferences.copy(androidFileRoots = emptyList()))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Отозвать доступ ко всем папкам", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                ToolPreferenceRow(
+                    title = "Команды через Termux",
+                    description = "Запуск разрешённых диагностических команд в Termux с отдельным подтверждением каждой команды",
+                    checked = "termux_command" in preferences.enabledTools,
+                    onChecked = { toggleTool("termux_command", it) }
+                )
+                Text(
+                    "Нужен установленный Termux. В его файле ~/.termux/termux.properties включи allow-external-apps=true и выдай Aidroid разрешение RUN_COMMAND. Команды запускаются без root; произвольные shell-скрипты и опасные системные команды заблокированы.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 Text(
                     "ОСТАЛЬНЫЕ ИНСТРУМЕНТЫ",
                     color = MaterialTheme.colorScheme.secondary,
@@ -677,7 +747,7 @@ fun AgentWorkspaceScreen(manager: ProviderManager) {
                     onChecked = { toggleTool("voice_output", it) }
                 )
                 Text(
-                    "Постоянное разрешение отключено по умолчанию. При его включении агент может без повторных окон открывать разрешённые разделы и панели, менять уровни громкости и параметры экрана. Wi-Fi и Bluetooth переключаются внутри системной панели Android; для записи яркости и тайм-аута требуется отдельный специальный доступ WRITE_SETTINGS.",
+                    "Постоянное разрешение отключено по умолчанию. Оно распространяется только на обычные действия Android. Операции с файлами и команды Termux всегда требуют отдельного подтверждения. Системные и разрушительные операции остаются ограниченными.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
