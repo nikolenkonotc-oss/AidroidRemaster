@@ -102,12 +102,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
@@ -135,6 +138,8 @@ import app.aidroid.remaster.data.local.AidroidDatabase
 import app.aidroid.remaster.data.local.ChatEntity
 import app.aidroid.remaster.data.local.MessageEntity
 import app.aidroid.remaster.ui.fixedDimensionScale
+import app.aidroid.remaster.ui.MarkdownMessageBlock
+import app.aidroid.remaster.ui.parseMarkdownMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -2046,7 +2051,7 @@ private fun ConversationScreen(
                                 horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                             ) {
                                 GlassPanel(
-                                    modifier = Modifier.widthIn(max = 320.dp)
+                                    modifier = Modifier.then(if (isUser) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth())
                                         .graphicsLayer {
                                             val progress = entryProgress.value
                                             val entryScale = 0.93f + 0.07f * progress
@@ -2679,54 +2684,263 @@ private fun MessageBodyText(
     content: String,
     onOpenLink: (String) -> Unit
 ) {
-    val linkColor = MaterialTheme.colorScheme.primary
-    val annotated = remember(messageId, content, linkColor) {
-        val pattern = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE)
-        buildAnnotatedString {
-            var cursor = 0
-            pattern.findAll(content).forEach { match ->
-                val clean = match.value.trimEnd('.', ',', '!', '?', ';', ':', ')', ']', '}')
-                if (clean.isNotEmpty()) {
-                    val start = match.range.first
-                    val suffixStart = start + clean.length
-                    append(content.substring(cursor, start))
-                    val link = LinkAnnotation.Url(
-                        clean,
-                        TextLinkStyles(
-                            style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
-                        )
-                    ) { clicked ->
-                        onOpenLink((clicked as LinkAnnotation.Url).url)
+    val blocks = remember(messageId, content) { parseMarkdownMessage(content) }
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownMessageBlock.Heading -> {
+                    val headingStyle = when (block.level) {
+                        1 -> MaterialTheme.typography.titleLarge
+                        2 -> MaterialTheme.typography.titleMedium
+                        else -> MaterialTheme.typography.titleSmall
                     }
-                    withLink(link) { append(clean) }
-                    if (suffixStart <= match.range.last) append(content.substring(suffixStart, match.range.last + 1))
-                    cursor = match.range.last + 1
+                    MarkdownInlineText(
+                        text = block.text,
+                        onOpenLink = onOpenLink,
+                        style = headingStyle.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = headingStyle.lineHeight
+                        )
+                    )
+                }
+                is MarkdownMessageBlock.Paragraph -> {
+                    MarkdownInlineText(
+                        text = block.text,
+                        onOpenLink = onOpenLink,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 23.sp
+                        )
+                    )
+                }
+                is MarkdownMessageBlock.Bullet -> {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            Modifier.padding(top = 9.dp).size(6.dp)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        )
+                        MarkdownInlineText(
+                            text = block.text,
+                            onOpenLink = onOpenLink,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 23.sp
+                            )
+                        )
+                    }
+                }
+                is MarkdownMessageBlock.Numbered -> {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            "${block.number}.",
+                            modifier = Modifier.widthIn(min = 22.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        MarkdownInlineText(
+                            text = block.text,
+                            onOpenLink = onOpenLink,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 23.sp
+                            )
+                        )
+                    }
+                }
+                is MarkdownMessageBlock.Quote -> {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            Modifier.width(3.dp).heightIn(min = 24.dp)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.72f), RoundedCornerShape(3.dp))
+                        )
+                        MarkdownInlineText(
+                            text = block.text,
+                            onOpenLink = onOpenLink,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 22.sp
+                            )
+                        )
+                    }
+                }
+                is MarkdownMessageBlock.Code -> {
+                    MarkdownCodeBlock(block.language, block.text)
+                }
+                MarkdownMessageBlock.Divider -> {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                 }
             }
-            append(content.substring(cursor))
         }
     }
-    var expanded by remember(messageId) { mutableStateOf(false) }
-    var canExpand by remember(messageId) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().animateContentSize(tween(240, easing = FastOutSlowInEasing))) {
-        BasicText(
-            text = annotated,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-            maxLines = if (expanded) Int.MAX_VALUE else 14,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { canExpand = it.didOverflowHeight }
+}
+
+@Composable
+private fun MarkdownInlineText(
+    text: String,
+    onOpenLink: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium
+) {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    val codeForeground = MaterialTheme.colorScheme.onSurface
+    val annotated = remember(text, linkColor, codeBackground, codeForeground) {
+        buildMessageAnnotatedString(
+            text = text,
+            linkColor = linkColor,
+            codeBackground = codeBackground,
+            codeForeground = codeForeground,
+            onOpenLink = onOpenLink
         )
-        AnimatedVisibility(visible = canExpand || expanded, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
-            TextButton(
-                onClick = { expanded = !expanded },
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 3.dp)
+    }
+    Text(text = annotated, modifier = modifier, style = style)
+}
+
+@Composable
+private fun MarkdownCodeBlock(language: String, code: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = remember(context) {
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)
+        )
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (expanded) "Свернуть" else "Показать ещё", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    language.ifBlank { "КОД" }.uppercase(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    letterSpacing = 1.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("code", code))
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.ContentCopy,
+                        contentDescription = "Копировать код",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+            SelectionContainer {
+                Text(
+                    code.ifBlank { " " },
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 19.sp)
+                )
             }
         }
     }
+}
+
+private val inlineMarkdownPattern = Regex(
+    """(\\*\\*(.+?)\\*\\*|__(.+?)__|(?<!\\*)\\*([^*]+)\\*(?!\\*)|(?<!_)_([^_]+)_(?!_)|`([^`]+)`|\\[([^\\]]+)\\]\\((https?://[^)\\s]+)\\)|(https?://[^\\s<>]+))""",
+    RegexOption.IGNORE_CASE
+)
+
+private fun buildMessageAnnotatedString(
+    text: String,
+    linkColor: Color,
+    codeBackground: Color,
+    codeForeground: Color,
+    onOpenLink: (String) -> Unit
+): AnnotatedString = buildAnnotatedString {
+    var cursor = 0
+    inlineMarkdownPattern.findAll(text).forEach { match ->
+        append(text.substring(cursor, match.range.first))
+        val groups = match.groupValues
+        when {
+            groups[2].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(groups[2]) }
+            groups[3].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(groups[3]) }
+            groups[4].isNotEmpty() -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(groups[4]) }
+            groups[5].isNotEmpty() -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(groups[5]) }
+            groups[6].isNotEmpty() -> withStyle(
+                SpanStyle(
+                    fontFamily = FontFamily.Monospace,
+                    background = codeBackground,
+                    color = codeForeground
+                )
+            ) { append(groups[6]) }
+            groups[7].isNotEmpty() && groups[8].isNotEmpty() -> {
+                val url = groups[8].trimEnd('.', ',', '!', '?', ';', ':', ')', ']', '}')
+                appendMarkdownLink(groups[7], url, linkColor, onOpenLink)
+            }
+            groups[9].isNotEmpty() -> {
+                val raw = groups[9]
+                val url = raw.trimEnd('.', ',', '!', '?', ';', ':', ')', ']', '}')
+                if (url.isNotEmpty()) {
+                    appendMarkdownLink(url, url, linkColor, onOpenLink)
+                    append(raw.removePrefix(url))
+                } else {
+                    append(raw)
+                }
+            }
+        }
+        cursor = match.range.last + 1
+    }
+    append(text.substring(cursor))
+}
+
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendMarkdownLink(
+    label: String,
+    url: String,
+    linkColor: Color,
+    onOpenLink: (String) -> Unit
+) {
+    if (url.isBlank()) {
+        append(label)
+        return
+    }
+    val link = LinkAnnotation.Url(
+        url,
+        TextLinkStyles(
+            style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+        )
+    ) { clicked ->
+        onOpenLink((clicked as LinkAnnotation.Url).url)
+    }
+    withLink(link) { append(label) }
 }
 
 @Composable
