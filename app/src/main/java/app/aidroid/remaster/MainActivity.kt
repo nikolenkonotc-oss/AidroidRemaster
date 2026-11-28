@@ -121,6 +121,7 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.aidroid.remaster.ai.AgentRunner
+import app.aidroid.remaster.ai.TermuxCommandTools
 import app.aidroid.remaster.ai.AgentActionType
 import app.aidroid.remaster.ai.AgentExternalAction
 import app.aidroid.remaster.ai.AgentWorkspaceScreen
@@ -141,6 +142,7 @@ import app.aidroid.remaster.ui.fixedDimensionScale
 import app.aidroid.remaster.ui.MarkdownMessageBlock
 import app.aidroid.remaster.ui.parseMarkdownMessage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -211,6 +213,36 @@ private fun AidroidApp(
     agentTaskScope: CoroutineScope
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Termux requests RUN_COMMAND from the tool coroutine. Keep the system
+    // permission launcher at the app root so navigation cannot dispose it.
+    var pendingTermuxPermissionRequest by remember {
+        mutableStateOf<CompletableDeferred<Boolean>?>(null)
+    }
+    val termuxPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        pendingTermuxPermissionRequest?.complete(granted)
+        pendingTermuxPermissionRequest = null
+    }
+    val termuxPermissionRequest by TermuxCommandTools.permissionRequest.collectAsState()
+    LaunchedEffect(termuxPermissionRequest) {
+        val request = termuxPermissionRequest ?: return@LaunchedEffect
+        if (request.isCompleted) return@LaunchedEffect
+
+        val alreadyGranted = ContextCompat.checkSelfPermission(
+            context,
+            TermuxCommandTools.RUN_COMMAND_PERMISSION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (alreadyGranted) {
+            request.complete(true)
+        } else {
+            pendingTermuxPermissionRequest = request
+            termuxPermissionLauncher.launch(TermuxCommandTools.RUN_COMMAND_PERMISSION)
+        }
+    }
+
     val themePreferences = remember(context) {
         context.getSharedPreferences("aidroid_remaster_preferences", Context.MODE_PRIVATE)
     }
@@ -2724,7 +2756,7 @@ private fun MessageBodyText(
                         verticalAlignment = Alignment.Top
                     ) {
                         Box(
-                            Modifier.padding(top = 9.dp).size(6.dp)
+                            Modifier.padding(top = 14.dp).size(6.dp)
                                 .background(MaterialTheme.colorScheme.primary, CircleShape)
                         )
                         MarkdownInlineText(
