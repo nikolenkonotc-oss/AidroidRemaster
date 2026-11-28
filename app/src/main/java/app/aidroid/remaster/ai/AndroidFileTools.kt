@@ -311,20 +311,22 @@ object AndroidFileTools {
             name
         ) ?: throw IllegalStateException("Не удалось создать файл в папке назначения.")
         try {
-            context.contentResolver.openInputStream(source.uri).use { input ->
-                requireNotNull(input) { "Не удалось открыть исходный файл." }
-                context.contentResolver.openOutputStream(target.uri, "w").use { output ->
-                    requireNotNull(output) { "Не удалось записать копию файла." }
+            val input = context.contentResolver.openInputStream(source.uri)
+                ?: throw IllegalStateException("Не удалось открыть исходный файл.")
+            input.use { sourceStream ->
+                val output = context.contentResolver.openOutputStream(target.uri, "w")
+                    ?: throw IllegalStateException("Не удалось записать копию файла.")
+                output.use { targetStream ->
                     val buffer = ByteArray(64 * 1024)
                     var total = 0L
                     while (true) {
-                        val count = input.read(buffer)
+                        val count = sourceStream.read(buffer)
                         if (count < 0) break
                         total += count
                         require(total <= MAX_COPY_BYTES) { "Файл превысил лимит копирования 512 МБ." }
-                        output.write(buffer, 0, count)
+                        targetStream.write(buffer, 0, count)
                     }
-                    output.flush()
+                    targetStream.flush()
                 }
             }
             return target
