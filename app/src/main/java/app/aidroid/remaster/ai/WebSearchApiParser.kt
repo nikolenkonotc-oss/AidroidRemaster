@@ -17,7 +17,7 @@ internal object WebSearchApiParser {
             val title = row.string("title").trim()
             val url = row.string("url").trim()
             val content = row.string("content")
-                .replace(Regex("""\\s+"""), " ")
+                .replace(Regex("""\s+"""), " ")
                 .trim()
             val publishedAt = row.string("published_date").trim()
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@mapNotNull null
@@ -35,7 +35,7 @@ internal object WebSearchApiParser {
             val row = item.jsonObject
             val title = row.string("title").trim()
             val url = row.string("url").trim()
-            val snippet = row.string("description").replace(Regex("""\\s+"""), " ").trim()
+            val snippet = row.string("description").replace(Regex("""\s+"""), " ").trim()
             val age = row.string("age").trim()
             if (title.isBlank() || !WebResearchEngine.isSafeUrlSyntax(url)) return@mapNotNull null
             WebSearchHit(
