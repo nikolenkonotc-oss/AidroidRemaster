@@ -85,6 +85,35 @@ class AgentToolExecutor(
         return executeCode(action)
     }
 
+    suspend fun searchForUi(query: String, freshness: String = "any"): List<WebSearchHit> = withContext(Dispatchers.IO) {
+        val cleanQuery = query.trim()
+        AgentSafetyPolicy.validateSearchQuery(cleanQuery)
+        require(cleanQuery.isNotBlank() && cleanQuery.length <= 600) {
+            "Поисковый запрос должен содержать от 1 до 600 символов."
+        }
+        val period = freshness.takeIf { it in setOf("any", "day", "week", "month", "year") } ?: "any"
+        val tavilyKey = providers.toolCredential("tavily_search").orEmpty().trim()
+        val braveKey = providers.toolCredential("brave_search").orEmpty().trim()
+        val tavilyAttempt = if (tavilyKey.isNotBlank()) {
+            runCatching { searchTavily(cleanQuery, period, tavilyKey) }
+        } else null
+        val tavilyResults = tavilyAttempt?.getOrNull().orEmpty()
+        val useBrave = tavilyResults.isEmpty() && braveKey.isNotBlank()
+        val braveAttempt = if (useBrave) runCatching { searchBrave(cleanQuery, period, braveKey) } else null
+        val results = if (tavilyResults.isNotEmpty()) tavilyResults else braveAttempt?.getOrNull().orEmpty()
+        if (results.isEmpty()) {
+            val tavilyError = tavilyAttempt?.exceptionOrNull()?.message
+                ?: if (tavilyKey.isBlank()) "Добавь личный Tavily API key в настройках агента." else null
+            val braveError = braveAttempt?.exceptionOrNull()?.message
+                ?: if (braveKey.isBlank()) "Brave API key не добавлен." else null
+            throw IllegalStateException(
+                listOfNotNull(tavilyError, braveError).joinToString(" · ")
+                    .ifBlank { "Поисковые API не вернули результатов. Проверь ключи и лимиты." }
+            )
+        }
+        results
+    }
+
     private suspend fun searchWeb(arguments: JsonObject): AgentToolResult = withContext(Dispatchers.IO) {
         val query = arguments.string("query")
         AgentSafetyPolicy.validateSearchQuery(query)
