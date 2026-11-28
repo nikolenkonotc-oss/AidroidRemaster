@@ -95,7 +95,7 @@ class AgentToolExecutor(
             it in setOf("any", "day", "week", "month", "year")
         } ?: "any"
 
-        val freeAttempt = runCatching { webResearch.search(query, freshness) }
+        val freeAttempt = runCatching { webResearch.search(query, freshness, providers.toolCredential("mwmbl_search")) }
         val freeResults = freeAttempt.getOrNull().orEmpty()
         val optionalKey = providers.toolCredential("brave_search")
         // A handful of scraped results is not enough for a broad/current query.
