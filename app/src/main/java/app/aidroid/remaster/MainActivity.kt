@@ -531,6 +531,8 @@ private fun AgentActionApprovalDialog(
     val confirmLabel = when (action.type) {
         AgentActionType.CODE_EXECUTION -> "Запустить код"
         AgentActionType.ANDROID_CONTROL -> "Разрешить действие"
+        AgentActionType.FILE_OPERATION -> "Выполнить операцию"
+        AgentActionType.TERMUX_COMMAND -> "Запустить в Termux"
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -567,9 +569,35 @@ private fun AgentActionApprovalDialog(
                         }
                         Text(explanation)
                     }
+                    AgentActionType.FILE_OPERATION -> {
+                        Text("Операция ограничена выбранными тобой папками. Перезапись существующих файлов, рекурсивное удаление папок и выход за выбранный корень запрещены.")
+                        Text(
+                            action.body,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                    AgentActionType.TERMUX_COMMAND -> {
+                        Text("Команда будет отправлена в Termux без root-доступа. Запускается только одна команда из ограниченного списка; shell-скрипты, перенаправления и опасные системные команды заблокированы.")
+                        SelectionContainer {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    action.body,
+                                    modifier = Modifier.padding(12.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
                 }
                 Text(
-                    "Это действие будет выполнено только после подтверждения. Отмена или закрытие окна отклоняет его.",
+                    "Операция будет выполнена только после подтверждения. Отмена или закрытие окна отклоняет её.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
